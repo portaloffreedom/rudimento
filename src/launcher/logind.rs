@@ -127,10 +127,10 @@ impl LogindLauncher {
         message = message.append2(major, minor);
 
         // send the message
-        let reply = match self.dbus_conn.send_with_reply_and_block(message, -1) {
-            Ok(r) => r,
-            Err(e) => return Err(format!("Error sending message \"TakeDevice\": {}", e)),
-        };
+        let reply = dbus_error_to_string_try!(
+            self.dbus_conn.send_with_reply_and_block(message, -1),
+            "Error sending message \"TakeDevice\": {}"
+        );
 
         Ok(())
     }
@@ -197,10 +197,10 @@ impl LogindLauncher {
         ).append1(false); // force
 
         //dbus_connection_send_with_reply_and_block
-        let reply = match self.dbus_conn.send_with_reply_and_block(message, -1) {
-            Ok(r) => r,
-            Err(e) => return Err(format!("Error sending message \"TakeControl\": {}", e)),
-        };
+        let reply = dbus_error_to_string_try!(
+            self.dbus_conn.send_with_reply_and_block(message, -1),
+            "Error sending message \"TakeControl\": {}"
+        );
 
         Ok(())
     }
