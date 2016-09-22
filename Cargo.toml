@@ -1,0 +1,16 @@
+[package]
+name = "rudimento"
+version = "0.1.0"
+authors = ["Matteo De Carlo <matteo.dek@gmail.com>"]
+build = "build.rs"
+
+[dependencies]
+gl = "0.6.1"
+khronos = "0.1.1"
+libc = "0.2.16"
+libudev = "0.2.0"
+dbus = "0.4.0"
+
+[build-dependencies]
+gl_generator = "0.5.2"
+pkg-config = "0.3.8"
