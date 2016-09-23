@@ -7,6 +7,7 @@ use dbus;
 use dbus::arg::Array;
 use libc;
 use libc::stat;
+use libc::c_int;
 
 use launcher::Launcher;
 use systemd::login;
@@ -264,7 +265,9 @@ impl Launcher for LogindLauncher {
         Ok(())
     }
 
-    fn open(&mut self, device_path: &Path) -> Result<RawFd, String> {
+    //TODO return something connected to the lifetime of the launcher, because the fd...
+    // shouldn't live more than the lancher (launcher on drop closes the fd)
+    fn open(&mut self, device_path: &Path, flags: c_int) -> Result<RawFd, String> {
         // logind take device
         match self.device_path {
             Some(ref path) => return Err(format!("Device {} already open", &path.as_os_str().to_string_lossy())),
@@ -273,8 +276,28 @@ impl Launcher for LogindLauncher {
 
         let (fd, _) = try!(self.take_device(device_path));
 
-        //TODO test F_GETFL
-        //TODO F_SETFL to O_NONBLOCK
+        //F_GETFL
+        use libc::{fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
+        let mut file_status_flags: c_int = unsafe{fcntl(fd, F_GETFL)};
+        if file_status_flags < 0 {
+            return Err("Error reading file flags from device file descriptor".to_string());
+        }
+
+        /* Compared to weston_launcher_open() we cannot specify the open-mode
+         * directly. Instead, logind passes us an fd with sane default modes.
+         * For DRM and evdev this means O_RDWR | O_CLOEXEC. If we want
+         * something else, we need to change it afterwards. We currently
+         * only support setting O_NONBLOCK. Changing access-modes is not
+         * possible so accept whatever logind passes us. */
+        if flags & O_NONBLOCK != 0 {
+            file_status_flags |= O_NONBLOCK;
+        }
+
+        //F_SETFL to O_NONBLOCK
+        let r = unsafe{fcntl(fd, F_SETFL, file_status_flags)};
+        if r < 0 {
+            return Err("Error setting file flags from device file descriptor".to_string());
+        }
 
         println!("Using device {}", device_path.as_os_str().to_string_lossy());
 

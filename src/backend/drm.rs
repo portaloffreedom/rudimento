@@ -55,9 +55,8 @@ impl Backend for DRMBackend {
         };
 
         launcher.connect().unwrap();
-        //TODO return something connected to the lifetime of the launcher, because the fd...
-        // shouldn't live more than the lancher (launcher on drop closes the fd)
-        let fd = launcher.open(&device_devnode_path);
+        use libc::O_RDWR;
+        let fd = launcher.open(&device_devnode_path, O_RDWR);
 
         let mut backend = DRMBackend {
             use_pixman: false,

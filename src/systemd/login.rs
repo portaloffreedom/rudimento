@@ -45,19 +45,33 @@ pub fn get_session() -> Result<CString, String> {
 }
 
 pub fn session_get_seat(session_id: &String) -> Result<CString, String> {
-    let r: c_int;
     let mut seat_c_char: *mut c_char = 0 as *mut c_char;
-    let seat: CString;
 
-    unsafe {
-        r = login::sd_session_get_seat(session_id.as_ptr() as *const c_char, &mut seat_c_char as *mut *mut c_char);
-        seat = CString::from_raw(seat_c_char);
-    }
+    let r: c_int = unsafe {
+        login::sd_session_get_seat(session_id.as_ptr() as *const c_char, &mut seat_c_char as *mut *mut c_char)
+    };
 
     if r < 0 {
         // error
-        Err("logind: failed to get session seat".to_string())
+        let detail_message: &str;
+
+        use libc::{ENXIO, ENODATA, EINVAL, ENOMEM};
+        if r == -ENXIO {
+            detail_message = "The specified session does not exist.";
+        } else if r == -ENODATA {
+            detail_message = "The given field is not specified for the described session.";
+        } else if r == -EINVAL {
+            detail_message = "An input parameter was invalid (out of range, or NULL, where that is not accepted).";
+        } else if r == -ENOMEM {
+            detail_message = "Memory allocation failed."
+        } else {
+            detail_message = "Unknown error."
+        }
+
+        Err(format!("logind: failed to get session seat. {}", detail_message))
+
     } else {
+        let seat = unsafe {CString::from_raw(seat_c_char)};
         Ok(seat)
     }
 }
