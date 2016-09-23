@@ -1,14 +1,15 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ffi::CString;
-use libc::stat;
-use libc;
-use launcher::Launcher;
-
-use systemd::login;
+use std::mem;
+use std::os::unix::io::RawFd;
 
 use dbus;
 use dbus::arg::Array;
-use std::mem;
+use libc;
+use libc::stat;
+
+use launcher::Launcher;
+use systemd::login;
 
 macro_rules! dbus_error_to_string_try {
     ( $dbus_result:expr, $error_string:tt) => {
@@ -68,6 +69,7 @@ pub struct LogindLauncher {
     vt: u32,
     dbus_path: String,
     dbus_conn: dbus::Connection,
+    device_path: Option<PathBuf>,
 }
 
 impl LogindLauncher {
@@ -104,10 +106,11 @@ impl LogindLauncher {
             vt: vt,
             dbus_path: dbus_path,
             dbus_conn: dbus_conn,
+            device_path: None,
         })
     }
 
-    fn take_device(&self, device_path: &Path) -> Result<(), String>{
+    fn take_device(&self, device_path: &Path) -> Result<(RawFd, bool), String>{
         let mut message = try!(dbus::Message::new_method_call(
             "org.freedesktop.login1",
             &self.dbus_path,
@@ -132,10 +135,31 @@ impl LogindLauncher {
             "Error sending message \"TakeDevice\": {}"
         );
 
-        Ok(())
+        let (fd_o, paused_o): (Option<dbus::OwnedFd>, Option<bool>) = reply.get2();
+
+        let fd = match fd_o {
+            Some(fd) => fd.into_fd(),
+            None => return Err("File descriptor not present in response message".to_string()),
+        };
+
+        if fd < 0 {
+            return Err("File desciptor invalid".to_string());
+        }
+
+        let paused = match paused_o {
+            Some(paused) => paused,
+            None => return Err("Paused boolean value not present in response message".to_string()),
+        };
+
+        Ok((fd, paused))
     }
 
-    fn release_device(&self, device_major: u32, device_minor: u32) -> Result<(), String> {
+    fn release_device(&self, device_path: &Path) -> Result<(), String> {
+        let device_stat = my_stat(device_path).unwrap();
+
+        let device_major: u32 = major(device_stat.st_rdev);
+        let device_minor: u32 = minor(device_stat.st_rdev);
+
         let message = try!(dbus::Message::new_method_call(
             "org.freedesktop.login1",
             &self.dbus_path,
@@ -233,19 +257,39 @@ impl LogindLauncher {
 }
 
 impl Launcher for LogindLauncher {
-    fn connect(&self) {
-        self.setup_dbus().unwrap();
-        self.take_control().unwrap();
-        self.activate().unwrap();
+    fn connect(&self) -> Result<(), String> {
+        try!(self.setup_dbus());
+        try!(self.take_control());
+        try!(self.activate());
+        Ok(())
     }
 
-    fn open(&self, device_path: &Path) {
+    fn open(&mut self, device_path: &Path) -> Result<RawFd, String> {
         // logind take device
-        self.take_device(device_path).unwrap();
+        match self.device_path {
+            Some(ref path) => return Err(format!("Device {} already open", &path.as_os_str().to_string_lossy())),
+            None => self.device_path = Some(device_path.to_path_buf()),
+        }
+
+        let (fd, _) = try!(self.take_device(device_path));
+
+        //TODO test F_GETFL
+        //TODO F_SETFL to O_NONBLOCK
+
+        println!("Using device {}", device_path.as_os_str().to_string_lossy());
+
+        Ok(fd)
     }
 
-    fn close(&self) {
+    fn close(&mut self) {
+        let mut path = None;
+        use std::mem;
+        mem::swap(&mut path, &mut self.device_path);
 
+        match self.release_device(&path.unwrap()).err() {
+            Some(e) => println!("Error closing logind interface: {}", e),
+            None => {}
+        }
     }
 
     fn activate_vt(&self) -> Result<(), String> {
@@ -270,6 +314,13 @@ impl Launcher for LogindLauncher {
 impl Drop for LogindLauncher {
     fn drop(&mut self) {
         self.release_control();
+
+        //maybe close?
+        match self.device_path {
+            Some(_) => self.close(),
+            None => {},
+        }
+
         //self.dbus_conn is release as soon as it's dropped
     }
 }

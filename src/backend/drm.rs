@@ -10,7 +10,7 @@ use std::borrow::Borrow;
 use std::error::Error as StdError;
 use std::fmt;
 use std::io;
-use std::path::Path;
+use std::path::PathBuf;
 use std::str;
 use std::string::String;
 
@@ -20,22 +20,8 @@ pub struct DRMBackend {
     use_egldevice: bool,
     //egl_device: EGLDeviceEXT,
     //udev_context: libudev::Context,
-    drm_device: DRMDevice,
-}
-
-struct DRMDevice {
-    //devnode: File,
-}
-
-impl DRMDevice {
-    pub fn open(path: &Path) -> io::Result<DRMDevice> {
-        //TODO open file
-        //TODO test if file is S_ISCHR
-
-        Ok(DRMDevice {
-
-        })
-    }
+    //drm_device: DRMDevice,
+    interface: Box<Launcher>,
 }
 
 #[derive(Debug)]
@@ -58,13 +44,27 @@ impl fmt::Display for DRMBackendError {
 impl Backend for DRMBackend {
     fn load_backend() -> backend::Result<Box<Self>> {
         let mut udev_context = libudev::Context::new().unwrap();
-        let device = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
+        let device_devnode_path = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
+
+        use launcher::logind::LogindLauncher;
+        let mut launcher = match LogindLauncher::new(Some(1), "".to_string(), false) {
+            Ok(l) => Box::new(l),
+            Err(e) => return Err(Box::new(DRMBackendError {
+                description: e
+            })),
+        };
+
+        launcher.connect().unwrap();
+        //TODO return something connected to the lifetime of the launcher, because the fd...
+        // shouldn't live more than the lancher (launcher on drop closes the fd)
+        let fd = launcher.open(&device_devnode_path);
 
         let mut backend = DRMBackend {
             use_pixman: false,
             use_egldevice: true,
             //udev_context: udev_context,
-            drm_device: device,
+            //drm_device: fd,
+            interface: launcher,
         };
 
         Ok(Box::new(backend))
@@ -72,7 +72,7 @@ impl Backend for DRMBackend {
 }
 
 impl DRMBackend {
-    fn find_primary_gpu(udev_context: &libudev::Context, seat: &str) -> backend::Result<DRMDevice> {
+    fn find_primary_gpu(udev_context: &libudev::Context, seat: &str) -> backend::Result<PathBuf> {
         let mut enumerator = match libudev::Enumerator::new(&udev_context) {
             Ok(enumerator) => enumerator,
             Err(e) => return Err(Box::new(e)),
@@ -133,21 +133,7 @@ impl DRMBackend {
 
         PrintUDEVDeviceInfo(&device);
 
-        use launcher::logind::LogindLauncher;
-        let launcher = match LogindLauncher::new(None, "".to_string(), false) {
-            Ok(l) => l,
-            Err(e) => return Err(Box::new(DRMBackendError {
-                description: e
-            })),
-        };
-
-        launcher.connect();
-        launcher.open(devnode);
-
-
-        Ok(DRMDevice {
-            //devnode: PathBuf::from(devnode),
-        })
+        Ok(devnode.to_path_buf())
     }
 }
 
