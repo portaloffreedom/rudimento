@@ -10,6 +10,7 @@ khronos = "0.1.1"
 libc = "0.2.16"
 libudev = "0.2.0"
 dbus = "0.4.0"
+drm-rs = "0.1.1"
 
 [build-dependencies]
 gl_generator = "0.5.2"

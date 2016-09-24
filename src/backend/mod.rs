@@ -6,5 +6,5 @@ use std::result::Result as StdResult;
 pub type Result<T> = StdResult<T,Box<StdError>>;
 
 pub trait Backend {
-    fn load_backend() -> Result<Box<Self>>;
+    fn load_backend(use_pixman: bool) -> Result<Box<Self>>;
 }

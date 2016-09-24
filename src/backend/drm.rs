@@ -1,18 +1,23 @@
 use backend;
 use backend::Backend;
 use launcher::Launcher;
+use compositor::Compositor;
 
 use egl::types::EGLDeviceEXT;
-
 use libudev;
+use libc;
 
 use std::borrow::Borrow;
 use std::error::Error as StdError;
 use std::fmt;
 use std::io;
-use std::path::PathBuf;
+use std::os::unix::io::RawFd;
+use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
+use renderer::Renderer;
+use renderer::egl::EglRenderer;
+use renderer::pixman::PixmanRenderer;
 
 pub struct DRMBackend {
     //compositor
@@ -20,8 +25,34 @@ pub struct DRMBackend {
     use_egldevice: bool,
     //egl_device: EGLDeviceEXT,
     //udev_context: libudev::Context,
-    //drm_device: DRMDevice,
+    drm_device: DRMDevice,
     interface: Box<Launcher>,
+    cursor_with: u64,
+    cursor_height: u64,
+    compositor: Compositor,
+    renderer: Box<Renderer>,
+}
+
+pub struct DRMDevice {
+    fd: RawFd,
+    filename: PathBuf,
+}
+
+impl DRMDevice {
+    fn new(fd: RawFd, filename: PathBuf) -> DRMDevice {
+        DRMDevice {
+            fd: fd,
+            filename: filename,
+        }
+    }
+
+    fn as_rawfd(&self) -> &RawFd {
+        &self.fd
+    }
+
+    fn dev_path(&self) -> &Path {
+        &self.filename
+    }
 }
 
 #[derive(Debug)]
@@ -42,7 +73,7 @@ impl fmt::Display for DRMBackendError {
 }
 
 impl Backend for DRMBackend {
-    fn load_backend() -> backend::Result<Box<Self>> {
+    fn load_backend(use_pixman: bool) -> backend::Result<Box<Self>> {
         let mut udev_context = libudev::Context::new().unwrap();
         let device_devnode_path = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
 
@@ -54,16 +85,83 @@ impl Backend for DRMBackend {
             })),
         };
 
-        launcher.connect().unwrap();
+        match launcher.connect().err() {
+            Some(e) =>  return Err(Box::new(DRMBackendError {
+                description: e
+            })),
+            None => {},
+        }
+
         use libc::O_RDWR;
-        let fd = launcher.open(&device_devnode_path, O_RDWR);
+        let fd = match launcher.open(&device_devnode_path, O_RDWR) {
+            Ok(fd) => fd,
+            Err(e) => return Err(Box::new(DRMBackendError {
+                description: e
+            })),
+        };
+
+        let drm_device = DRMDevice::new(fd, device_devnode_path);
+
+        use libdrm::drm::{get_cap,Capability};
+        let clock_type = match get_cap(drm_device.as_rawfd(), Capability::TimestampMonotonic) {
+            Ok(cap) => {
+                if cap == 1 {
+                    libc::CLOCK_MONOTONIC
+                } else {
+                    libc::CLOCK_REALTIME
+                }
+            },
+            Err(e) => {
+                println!("drm get capabilities failed with return code {}", e);
+                libc::CLOCK_REALTIME
+            },
+        };
+
+        let compositor = match Compositor::new(clock_type) {
+            Ok(c) => c,
+            Err(e) => return Err(Box::new(DRMBackendError {
+                description: e
+            })),
+        };
+
+
+        let cursor_with = match get_cap(drm_device.as_rawfd(), Capability::CursorWidth) {
+            Ok(cap) => cap,
+            Err(_) => 64,
+        };
+
+        let cursor_height = match get_cap(drm_device.as_rawfd(), Capability::CursorHeight) {
+            Ok(cap) => cap,
+            Err(_) => 64,
+        };
+
+        let renderer_result =
+            if use_pixman {
+                return Err(Box::new(DRMBackendError {
+                    description: "Pixman not supported yet, only egl is supported".to_string()
+                }));
+                PixmanRenderer::new()
+            } else { // use egl
+                EglRenderer::new(drm_device.dev_path())
+            };
+
+        let renderer = match renderer_result {
+            Ok(r) => Box::new(r),
+            Err(e) => return Err(Box::new(DRMBackendError {
+                description: e
+            })),
+        };
 
         let mut backend = DRMBackend {
             use_pixman: false,
             use_egldevice: true,
             //udev_context: udev_context,
-            //drm_device: fd,
+            drm_device: drm_device,
             interface: launcher,
+            cursor_with: cursor_with,
+            cursor_height: cursor_height,
+            compositor: compositor,
+            renderer: renderer
         };
 
         Ok(Box::new(backend))

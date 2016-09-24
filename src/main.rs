@@ -2,10 +2,13 @@ extern crate khronos;
 extern crate libc;
 extern crate libudev;
 extern crate dbus;
+extern crate drm as libdrm;
 
+mod compositor;
 mod systemd;
 mod backend;
 mod launcher;
+mod renderer;
 mod egl;
 mod gl {
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
@@ -16,7 +19,7 @@ use backend::Backend;
 
 fn main() {
 
-    let backend = match drm::DRMBackend::load_backend() {
+    let backend = match drm::DRMBackend::load_backend(false) {
         Ok(b) => b,
         Err(error) => {
             println!("{}", error.description());
