@@ -47,7 +47,7 @@ impl Backend for DRMBackend {
         let device_devnode_path = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
 
         use launcher::logind::LogindLauncher;
-        let mut launcher = match LogindLauncher::new(Some(1), "".to_string(), false) {
+        let mut launcher = match LogindLauncher::new(Some(2), "".to_string(), false) {
             Ok(l) => Box::new(l),
             Err(e) => return Err(Box::new(DRMBackendError {
                 description: e
