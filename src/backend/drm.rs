@@ -3,14 +3,12 @@ use backend::Backend;
 use launcher::Launcher;
 use compositor::Compositor;
 
-use egl::types::EGLDeviceEXT;
 use libudev;
 use libc;
 
 use std::borrow::Borrow;
 use std::error::Error as StdError;
 use std::fmt;
-use std::io;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use std::str;
@@ -74,11 +72,14 @@ impl fmt::Display for DRMBackendError {
 
 impl Backend for DRMBackend {
     fn load_backend(use_pixman: bool) -> backend::Result<Box<Self>> {
-        let mut udev_context = libudev::Context::new().unwrap();
+        let udev_context = libudev::Context::new().unwrap();
         let device_devnode_path = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
 
+        //TODO allow tty configuration
+        let tty = Some(2);
+
         use launcher::logind::LogindLauncher;
-        let mut launcher = match LogindLauncher::new(Some(2), "".to_string(), false) {
+        let mut launcher = match LogindLauncher::new(tty, "".to_string(), false) {
             Ok(l) => Box::new(l),
             Err(e) => return Err(Box::new(DRMBackendError {
                 description: e
@@ -103,7 +104,7 @@ impl Backend for DRMBackend {
         let drm_device = DRMDevice::new(fd, device_devnode_path);
 
         use libdrm::drm::{get_cap,Capability};
-        let clock_type = match get_cap(drm_device.as_rawfd(), Capability::TimestampMonotonic) {
+        let clock_type = match get_cap(*drm_device.as_rawfd(), Capability::TimestampMonotonic) {
             Ok(cap) => {
                 if cap == 1 {
                     libc::CLOCK_MONOTONIC
@@ -125,12 +126,12 @@ impl Backend for DRMBackend {
         };
 
 
-        let cursor_with = match get_cap(drm_device.as_rawfd(), Capability::CursorWidth) {
+        let cursor_with = match get_cap(*drm_device.as_rawfd(), Capability::CursorWidth) {
             Ok(cap) => cap,
             Err(_) => 64,
         };
 
-        let cursor_height = match get_cap(drm_device.as_rawfd(), Capability::CursorHeight) {
+        let cursor_height = match get_cap(*drm_device.as_rawfd(), Capability::CursorHeight) {
             Ok(cap) => cap,
             Err(_) => 64,
         };
@@ -140,19 +141,21 @@ impl Backend for DRMBackend {
                 return Err(Box::new(DRMBackendError {
                     description: "Pixman not supported yet, only egl is supported".to_string()
                 }));
-                PixmanRenderer::new()
+                // PixmanRenderer::new()
+                //     .map(|renderer| renderer as Box<Renderer>)
             } else { // use egl
                 EglRenderer::new(drm_device.dev_path())
+                    .map(|renderer| renderer as Box<Renderer>)
             };
 
         let renderer = match renderer_result {
-            Ok(r) => Box::new(r),
+            Ok(r) => r,
             Err(e) => return Err(Box::new(DRMBackendError {
                 description: e
             })),
         };
 
-        let mut backend = DRMBackend {
+        Ok(Box::new(DRMBackend {
             use_pixman: false,
             use_egldevice: true,
             //udev_context: udev_context,
@@ -162,9 +165,7 @@ impl Backend for DRMBackend {
             cursor_height: cursor_height,
             compositor: compositor,
             renderer: renderer
-        };
-
-        Ok(Box::new(backend))
+        }))
     }
 }
 
@@ -175,8 +176,8 @@ impl DRMBackend {
             Err(e) => return Err(Box::new(e)),
         };
 
-        enumerator.match_subsystem("drm");
-        enumerator.match_sysname("card[0-9]*");
+        enumerator.match_subsystem("drm")?;
+        enumerator.match_sysname("card[0-9]*")?;
 
         let default_seat = "seat0";
         let device_list = match enumerator.scan_devices() {
@@ -234,6 +235,7 @@ impl DRMBackend {
     }
 }
 
+#[allow(non_snake_case)]
 fn PrintUDEVDeviceInfo(device: &libudev::Device) {
     println!("\n##########################################################");
     println!("initialized: {:?}", device.is_initialized());
@@ -253,15 +255,17 @@ fn PrintUDEVDeviceInfo(device: &libudev::Device) {
         println!("     parent: None");
     }
 
-    println!("  [properties]");
+    println!("  [device.properties]");
     for property in device.properties() {
-        println!("    - {:?} {:?}", property.name(), property.value());
+        println!("    - {:?} \t{:?}", property.name(), property.value());
     }
 
-    println!("  [attributes]");
+    println!("  [device.attributes]");
     for attribute in device.attributes() {
-        println!("    - {:?} {:?}", attribute.name(), attribute.value());
+        println!("    - {:?} \t{:?}", attribute.name(), attribute.value());
     }
+
+    println!("\n##########################################################");
 }
 
 //trait SubSystemSearchable {

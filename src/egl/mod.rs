@@ -1,6 +1,9 @@
 //#[link(name = "EGL")]
 //extern {}
 
+mod loader;
+pub mod renderer;
+
 use khronos::khronos_uint64_t as k_khronos_uint64_t;
 use khronos::khronos_ssize_t as k_khronos_ssize_t;
 use khronos::khronos_utime_nanoseconds_t as k_khronos_utime_nanoseconds_t;
@@ -23,3 +26,6 @@ pub type NativeWindowType = *const c_void;
 
 include!(concat!(env!("OUT_DIR"), "/egl_bindings.rs"));
 
+//pub fn load_functions() {
+//    egl::load_with(|s| glfw.get_proc_address(s));
+//}
