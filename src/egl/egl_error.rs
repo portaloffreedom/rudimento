@@ -1,30 +1,41 @@
 use std::ffi::CStr;
+use std::fmt;
 use egl;
 use egl::ffi::types::{EGLint, EGLenum};
 
 #[derive(Debug)]
 pub struct EGLError {
     message: String,
+    code: EGLint,
 }
 
 impl EGLError {
     pub fn from_string(message: String) -> Self {
         Self {
-            message
+            message,
+            code: get_error(),
         }
     }
 
     pub fn from_str(message: &str) -> Self {
         Self {
-            message: message.to_string()
+            message: message.to_string(),
+            code: get_error(),
         }
     }
 
     pub fn from_cstr(message: &CStr) -> Self {
         //TODO make this better
         Self {
-            message: format!("{:?}", message)
+            message: format!("{:?}", message),
+            code: get_error(),
         }
+    }
+}
+
+impl fmt::Display for EGLError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.message, egl_error_string(self.code))
     }
 }
 
@@ -50,8 +61,12 @@ fn egl_error_string(code: EGLint) -> &'static str
     }
 }
 
+fn get_error() -> EGLint {
+    unsafe { egl::ffi::GetError()}
+}
+
 pub fn egl_error_state() -> String
 {
-	let code = unsafe {egl::ffi::GetError()};
+	let code = get_error();
 	format!("EGL error state: {} ({:?})\n", egl_error_string(code), code)
 }

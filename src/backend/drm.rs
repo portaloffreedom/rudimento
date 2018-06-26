@@ -72,15 +72,15 @@ impl fmt::Display for DRMBackendError {
 }
 
 impl Backend for DRMBackend {
-    fn load_backend(use_pixman: bool, use_egldevice: bool) -> backend::Result<Box<Self>> {
+}
+
+impl DRMBackend {
+    pub fn new(tty: u32, use_pixman: bool, use_egldevice: bool) -> backend::Result<Box<Self>> {
         let udev_context = libudev::Context::new().unwrap();
         let device_devnode_path = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
 
-        //TODO allow tty configuration
-        let tty = Some(2);
-
         use launcher::logind::LogindLauncher;
-        let mut launcher = match LogindLauncher::new(tty, "".to_string(), false) {
+        let mut launcher = match LogindLauncher::new(Some(tty), "".to_string(), false) {
             Ok(l) => Box::new(l),
             Err(e) => return Err(Box::new(DRMBackendError {
                 description: e
@@ -151,9 +151,7 @@ impl Backend for DRMBackend {
             renderer,
         }))
     }
-}
 
-impl DRMBackend {
     fn find_primary_gpu(udev_context: &libudev::Context, seat: &str) -> backend::Result<PathBuf> {
         let mut enumerator = match libudev::Enumerator::new(&udev_context) {
             Ok(enumerator) => enumerator,
@@ -227,7 +225,7 @@ impl DRMBackend {
                 if use_egldevice { // use eglstream (NVIDIA)
                     EGLRenderer::from_drm_device_file(drm_device)
                         .map(|renderer| renderer as Box<Renderer>)
-                        .map_err(|e| format!("{:?}", e))
+                        .map_err(|e| format!("{}", e))
                 } else {  // use GBM (mesa)
                     GBMRenderer::new(drm_device.rawfd())
                         .map(|renderer| renderer as Box<Renderer>)

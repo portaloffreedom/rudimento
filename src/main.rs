@@ -20,8 +20,9 @@ use backend::Backend;
 fn main() {
     let use_pixman = false;
     let use_egldevice = true;
+    let tty = 2;
 
-    let backend = match drm::DRMBackend::load_backend(use_pixman, use_egldevice) {
+    let backend = match drm::DRMBackend::new(tty, use_pixman, use_egldevice) {
         Ok(b) => b,
         Err(error) => {
             println!("{}", error.description());
