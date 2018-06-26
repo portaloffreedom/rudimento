@@ -16,6 +16,10 @@ impl EGLDevice {
         }
     }
 
+    pub fn raw(&self) -> EGLDeviceEXT {
+        self.raw_device
+    }
+
     /// This function will fail for mesa EGL and nvidia EGL querying an INTEL device
     pub fn get_drm_device_file(&self) -> Result<&'static CStr, EGLError> {
         let extensions = egl::query_extensions()?;

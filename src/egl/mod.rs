@@ -3,6 +3,7 @@ pub mod renderer;
 mod device;
 mod ffi;
 mod egl_error;
+mod display;
 
 pub use self::egl_error::EGLError;
 

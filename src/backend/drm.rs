@@ -45,11 +45,11 @@ impl DRMDevice {
         }
     }
 
-    fn rawfd(&self) -> RawFd {
+    pub fn rawfd(&self) -> RawFd {
         self.fd
     }
 
-    fn dev_path(&self) -> &Path {
+    pub fn dev_path(&self) -> &Path {
         &self.filename
     }
 }
@@ -137,7 +137,7 @@ impl Backend for DRMBackend {
             Err(_) => 64,
         };
 
-        let renderer = DRMBackend::init_egl(&drm_device, use_pixman, use_egldevice)?;
+        let renderer = DRMBackend::init_egl_renderer(&drm_device, use_pixman, use_egldevice)?;
 
         Ok(Box::new(DRMBackend {
             use_pixman,
@@ -218,14 +218,14 @@ impl DRMBackend {
         Ok(devnode.to_path_buf())
     }
 
-    fn init_egl(drm_device: &DRMDevice, use_pixman: bool, use_egldevice: bool) -> Result<Box<Renderer>, DRMBackendError> {
+    fn init_egl_renderer(drm_device: &DRMDevice, use_pixman: bool, use_egldevice: bool) -> Result<Box<Renderer>, DRMBackendError> {
         let renderer_result =
             if use_pixman {
                 PixmanRenderer::new()
                     .map(|renderer| renderer as Box<Renderer>)
             } else { // use egl
                 if use_egldevice { // use eglstream (NVIDIA)
-                    EGLRenderer::from_drm_device_file(drm_device.dev_path())
+                    EGLRenderer::from_drm_device_file(drm_device)
                         .map(|renderer| renderer as Box<Renderer>)
                         .map_err(|e| format!("{:?}", e))
                 } else {  // use GBM (mesa)
