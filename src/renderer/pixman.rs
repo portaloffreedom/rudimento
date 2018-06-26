@@ -10,8 +10,6 @@ impl Renderer for PixmanRenderer {
 
 impl PixmanRenderer {
     pub fn new() -> Result<Box<PixmanRenderer>,String> {
-        Ok(Box::new(PixmanRenderer {
-
-        }))
+        Err("PixmanRenderer not implemented yet".to_string())
     }
 }

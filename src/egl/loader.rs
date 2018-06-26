@@ -1,15 +1,18 @@
 use libc;
+use egl::EGLError;
 use std::os;
 use std::ffi::{CStr, CString};
 
 static mut EGL_LOADER: Option<EglLoader> = None;
 
-pub fn Load_EGL(lib_path: &str) -> Result<(), &CStr> {
+pub fn Load_EGL(lib_path: &str) -> Result<(), EGLError> {
     let egl_loader = unsafe { &mut EGL_LOADER };
     if egl_loader.is_none() {
-        let _egl_loader = EglLoader::new(lib_path)?;
+        let _egl_loader = EglLoader::new(lib_path).map_err(|e| {
+            EGLError::from_string(format!("Impossible to load EGL Library: {:?}", e))
+        })?;
 
-        ::egl::load_with(|s| _egl_loader.load_fn(s) as *const os::raw::c_void);
+        ::egl::ffi::load_with(|s| _egl_loader.load_fn(s) as *const os::raw::c_void);
 
         *egl_loader = Some(_egl_loader);
     }

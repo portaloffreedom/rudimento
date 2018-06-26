@@ -1,31 +1,28 @@
-//#[link(name = "EGL")]
-//extern {}
-
 mod loader;
 pub mod renderer;
+mod device;
+mod ffi;
+mod egl_error;
 
-use khronos::khronos_uint64_t as k_khronos_uint64_t;
-use khronos::khronos_ssize_t as k_khronos_ssize_t;
-use khronos::khronos_utime_nanoseconds_t as k_khronos_utime_nanoseconds_t;
-use libc::c_void;
+pub use self::egl_error::EGLError;
 
-#[allow(non_camel_case_types)]
-pub type khronos_utime_nanoseconds_t = k_khronos_utime_nanoseconds_t;
-#[allow(non_camel_case_types)]
-pub type khronos_uint64_t = k_khronos_uint64_t;
-#[allow(non_camel_case_types)]
-pub type khronos_ssize_t = k_khronos_ssize_t;
 
-pub type EGLint = i32;
-pub type EGLNativeDisplayType = *const c_void;
-pub type EGLNativePixmapType = *const c_void;
-pub type EGLNativeWindowType = *const c_void;
-pub type NativeDisplayType = *const c_void;
-pub type NativePixmapType = *const c_void;
-pub type NativeWindowType = *const c_void;
+use std::ffi::CStr;
 
-include!(concat!(env!("OUT_DIR"), "/egl_bindings.rs"));
+pub fn query_extensions<'a>() -> Result<Vec<String>, EGLError> {
+    let extensions = unsafe{ffi::QueryString(ffi::NO_DISPLAY, ffi::EXTENSIONS as ffi::EGLint)};
+    if extensions as usize == 0 {
+        return Err(EGLError::from_str("Retrieving EGL extension string failed."));
+    }
 
-//pub fn load_functions() {
-//    egl::load_with(|s| glfw.get_proc_address(s));
-//}
+    // This sucks as perfomance
+    let extensions: Vec<String> = unsafe {CStr::from_ptr(extensions)}
+        .to_string_lossy()
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+
+    // println!("ALL EXTENSIONS: {:?}", extensions);
+
+    Ok(extensions)
+}

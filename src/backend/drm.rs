@@ -14,7 +14,8 @@ use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
 use renderer::Renderer;
-use renderer::egl::EglRenderer;
+use renderer::egl::EGLRenderer;
+use renderer::gbm::GBMRenderer;
 use renderer::pixman::PixmanRenderer;
 
 pub struct DRMBackend {
@@ -44,8 +45,8 @@ impl DRMDevice {
         }
     }
 
-    fn as_rawfd(&self) -> &RawFd {
-        &self.fd
+    fn rawfd(&self) -> RawFd {
+        self.fd
     }
 
     fn dev_path(&self) -> &Path {
@@ -71,7 +72,7 @@ impl fmt::Display for DRMBackendError {
 }
 
 impl Backend for DRMBackend {
-    fn load_backend(use_pixman: bool) -> backend::Result<Box<Self>> {
+    fn load_backend(use_pixman: bool, use_egldevice: bool) -> backend::Result<Box<Self>> {
         let udev_context = libudev::Context::new().unwrap();
         let device_devnode_path = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
 
@@ -104,7 +105,7 @@ impl Backend for DRMBackend {
         let drm_device = DRMDevice::new(fd, device_devnode_path);
 
         use libdrm::drm::{get_cap,Capability};
-        let clock_type = match get_cap(*drm_device.as_rawfd(), Capability::TimestampMonotonic) {
+        let clock_type = match get_cap(drm_device.rawfd(), Capability::TimestampMonotonic) {
             Ok(cap) => {
                 if cap == 1 {
                     libc::CLOCK_MONOTONIC
@@ -126,45 +127,28 @@ impl Backend for DRMBackend {
         };
 
 
-        let cursor_with = match get_cap(*drm_device.as_rawfd(), Capability::CursorWidth) {
+        let cursor_with = match get_cap(drm_device.rawfd(), Capability::CursorWidth) {
             Ok(cap) => cap,
             Err(_) => 64,
         };
 
-        let cursor_height = match get_cap(*drm_device.as_rawfd(), Capability::CursorHeight) {
+        let cursor_height = match get_cap(drm_device.rawfd(), Capability::CursorHeight) {
             Ok(cap) => cap,
             Err(_) => 64,
         };
 
-        let renderer_result =
-            if use_pixman {
-                return Err(Box::new(DRMBackendError {
-                    description: "Pixman not supported yet, only egl is supported".to_string()
-                }));
-                // PixmanRenderer::new()
-                //     .map(|renderer| renderer as Box<Renderer>)
-            } else { // use egl
-                EglRenderer::new(drm_device.dev_path())
-                    .map(|renderer| renderer as Box<Renderer>)
-            };
-
-        let renderer = match renderer_result {
-            Ok(r) => r,
-            Err(e) => return Err(Box::new(DRMBackendError {
-                description: e
-            })),
-        };
+        let renderer = DRMBackend::init_egl(&drm_device, use_pixman, use_egldevice)?;
 
         Ok(Box::new(DRMBackend {
-            use_pixman: false,
-            use_egldevice: true,
+            use_pixman,
+            use_egldevice,
             //udev_context: udev_context,
-            drm_device: drm_device,
+            drm_device,
             interface: launcher,
-            cursor_with: cursor_with,
-            cursor_height: cursor_height,
-            compositor: compositor,
-            renderer: renderer
+            cursor_with,
+            cursor_height,
+            compositor,
+            renderer,
         }))
     }
 }
@@ -232,6 +216,28 @@ impl DRMBackend {
         PrintUDEVDeviceInfo(&device);
 
         Ok(devnode.to_path_buf())
+    }
+
+    fn init_egl(drm_device: &DRMDevice, use_pixman: bool, use_egldevice: bool) -> Result<Box<Renderer>, DRMBackendError> {
+        let renderer_result =
+            if use_pixman {
+                PixmanRenderer::new()
+                    .map(|renderer| renderer as Box<Renderer>)
+            } else { // use egl
+                if use_egldevice { // use eglstream (NVIDIA)
+                    EGLRenderer::from_drm_device_file(drm_device.dev_path())
+                        .map(|renderer| renderer as Box<Renderer>)
+                        .map_err(|e| format!("{:?}", e))
+                } else {  // use GBM (mesa)
+                    GBMRenderer::new(drm_device.rawfd())
+                        .map(|renderer| renderer as Box<Renderer>)
+                }
+            };
+
+        renderer_result
+            .map_err(|e| DRMBackendError {
+                description: format!("{:?}", e)
+            })
     }
 }
 

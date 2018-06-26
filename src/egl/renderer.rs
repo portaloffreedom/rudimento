@@ -1,37 +1,39 @@
-use renderer::Renderer;
 use egl;
-use egl::{EGLint};
-use egl::types::{EGLDeviceEXT, EGLBoolean};
-
-use std::ffi::{CStr, CString};
+use egl::EGLError;
+use egl::device::{EGLDevice, get_egl_devices};
+use renderer::Renderer;
 use std::path::Path;
-use std::mem;
-use libc;
 
-pub struct EglRenderer {
-    egl_device: EGLDeviceEXT,
+pub struct EGLRenderer {
+    egl_device: EGLDevice,
 //    opaque_attribs: egl::EGLint,
 //    alpha_attribs: egl::EGLint,
 //    opaque_stream_attribs: egl::EGLint,
 }
 
-impl Renderer for EglRenderer {
+impl Renderer for EGLRenderer {
 }
 
-impl EglRenderer {
-    pub fn new(device_path: &Path) -> Result<Box<EglRenderer>,String> {
-        let library_path = "/usr/lib/libEGL.so";
-        println!("Loading EGL Library from {:?}", library_path);
-        egl::loader::Load_EGL(library_path).map_err(|e| {
-            format!("Impossible to load EGL Library: {:?}", e)
-        })?;
-
+impl EGLRenderer {
+    pub fn from_drm_device_file(device_path: &Path) -> Result<Box<EGLRenderer>, EGLError> {
+        load_EGL()?;
         println!("Creating EGL Renderer at {:?}", device_path);
         
         let egl_device = find_egldevice(device_path)?;
-        Ok(Box::new(EglRenderer {
+        Ok(Box::new(EGLRenderer {
             egl_device,
         }))
+    }
+
+    pub fn first_drm_device_available() -> Result<Box<EGLRenderer>, EGLError> {
+        let devices = get_egl_devices()?;
+        if devices.len() > 0 {
+            Ok(Box::new(EGLRenderer {
+                egl_device: devices.into_iter().nth(0).unwrap(),
+            }))
+        } else {
+            Err(EGLError::from_str("No EGLDevice found"))
+        }
     }
 
     pub fn display_create() {
@@ -75,71 +77,35 @@ impl EglRenderer {
     }
 }
 
-fn find_egldevice(filename: &Path) -> Result<egl::types::EGLDeviceEXT, String> {
-    let devices = get_egl_devices()?;
-    //.filter(get drm_device_file() filename == drm_path)
-
-    //TODO let the compiler decide when to do this
-    unsafe{libc::free(devices as *mut libc::c_void)};
-
-    Err("not implemented yet".to_string())
+fn load_EGL() -> Result<(), EGLError> {
+    let library_path = "libEGL.so";
+    println!("Loading EGL Library from {:?}", library_path);
+    egl::loader::Load_EGL(library_path)
 }
 
-pub fn get_egl_devices() ->Result<*mut EGLDeviceEXT, String> {
+fn find_egldevice(filename: &Path) -> Result<EGLDevice, EGLError> {
+    let devices = get_egl_devices()?;
 
-    let extensions = unsafe{egl::QueryString(egl::NO_DISPLAY, egl::EXTENSIONS as EGLint)};
-    if extensions as usize == 0 {
-        return Err("Retrieving EGL extension string failed.".to_string());
+    if devices.len() == 0 {
+        //HACK BECAUSE WE GOT INTEL EGL PROBLEMS
+        Ok(devices.into_iter().find(|_| true ).unwrap())
+    } else {
+        devices.into_iter()
+            .find(|device| {
+                match device.get_drm_device_file() {
+                    Ok(drm_device) => 
+                    {
+                        let filename = filename.to_string_lossy();
+                        filename.eq(&drm_device.to_string_lossy())
+                    },
+                    Err(e) => {
+                        println!("ERROR READING DRM FILE FOR EGLDEVICE: {:?}", e);
+                        false
+                    }
+                }
+            })
+            .ok_or_else(|| {
+                EGLError::from_string(format!("Device {:?} not found", filename))
+            })
     }
-
-    let all_extensions = unsafe {CStr::from_ptr(extensions)}
-        .to_string_lossy().into_owned();
-
-    println!("ALL EXTENSIONS: {:?}", all_extensions);
-
-    //TODO check extensions
-    // if !check_extension(all_extensions, "EGL_EXT_device_base") &&
-    //    !check_extension(all_extensions, "EGL_EXT_device_query") ||
-    //    !check_extension(all_extensions, "EGL_EXT_device_enumeration")
-    // {
-    //     return Err("EGL_EXT_device_base not supported".to_string());
-    // }
-
-    let eglQueryDevicesEXT_cstring = CString::new("eglQueryDevicesEXT").unwrap();
-
-    let device_querier = unsafe {
-        mem::transmute::<_, unsafe extern "system" fn(EGLint, *mut EGLDeviceEXT, *mut EGLint) -> EGLBoolean>
-        (egl::GetProcAddress(eglQueryDevicesEXT_cstring.as_ptr()))
-    };
-
-    let mut num_devices: EGLint = 0;
-    if unsafe {device_querier(0, 0 as *mut EGLDeviceEXT, &mut num_devices)} != egl::TRUE as u32 {
-        return Err("device_querier(0, 0, *num_devices) call failed".to_string());
-    }
-
-    if num_devices < 1 {
-        return Err("No device found! ".to_string());
-    }
-
-    //TODO take this using a small C code
-    let size_of_EGLDeviceEXT: usize = 8; // HACK!!!
-
-    println!("egl devices found: {}", num_devices);
-    println!("size of EGLDeviceEXT: {}", size_of_EGLDeviceEXT);
-    println!("malloc -> {}", num_devices * size_of_EGLDeviceEXT as i32);
-
-    let device_malloc_size: usize = (num_devices * size_of_EGLDeviceEXT as i32) as usize;
-
-    let devices: *mut EGLDeviceEXT = unsafe {libc::malloc(device_malloc_size)} as *mut EGLDeviceEXT;
-
-    if devices.is_null() {
-        return Err("Error allocating space for EGL Devices scan".to_string());
-    }
-
-    if unsafe {device_querier(num_devices, devices, &mut num_devices)} != egl::TRUE as u32 {
-        unsafe{libc::free(devices as *mut libc::c_void)};
-        return Err(format!("device_querier({}, *devices, *num_devices) call failed", num_devices));
-    }
-
-    Ok(devices)
 }
