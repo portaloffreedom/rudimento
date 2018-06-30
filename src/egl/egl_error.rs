@@ -35,7 +35,7 @@ impl EGLError {
 
 impl fmt::Display for EGLError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.message, egl_error_string(self.code))
+        write!(f, "EGLError {}: {}", self.message, egl_error_string(self.code))
     }
 }
 

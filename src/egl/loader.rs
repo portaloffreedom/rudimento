@@ -5,7 +5,8 @@ use std::ffi::{CStr, CString};
 
 static mut EGL_LOADER: Option<EglLoader> = None;
 
-pub fn Load_EGL(lib_path: &str) -> Result<(), EGLError> {
+#[allow(non_snake_case)]
+pub fn load_EGL(lib_path: &str) -> Result<(), EGLError> {
     let egl_loader = unsafe { &mut EGL_LOADER };
     if egl_loader.is_none() {
         let _egl_loader = EglLoader::new(lib_path).map_err(|e| {

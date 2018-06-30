@@ -1,0 +1,1 @@
+pub trait Image<'a> {}

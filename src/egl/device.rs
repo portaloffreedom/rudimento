@@ -1,10 +1,10 @@
 use egl;
 use egl::ffi::EGLint;
-use egl::ffi::types::{EGLDeviceEXT, EGLBoolean};
-use std::ffi::{CStr, CString};
-use std::mem;
+use egl::ffi::types::EGLDeviceEXT;
+use std::ffi::CStr;
 use egl::EGLError;
 
+#[derive(Debug)]
 pub struct EGLDevice {
     raw_device: EGLDeviceEXT,
 }
@@ -22,23 +22,13 @@ impl EGLDevice {
 
     /// This function will fail for mesa EGL and nvidia EGL querying an INTEL device
     pub fn get_drm_device_file(&self) -> Result<&'static CStr, EGLError> {
-        let extensions = egl::query_extensions()?;
-
-        let mut found_EGL_EXT_device_base = false;
-        let mut found_EGL_EXT_device_query = false;
-        let mut found_EGL_EXT_device_enumeration = false;
-        extensions.iter()
-            .for_each(|ext| {
-                let ext = ext.trim();
-                if ext == "EGL_EXT_device_base" { found_EGL_EXT_device_base = true }
-                if ext == "EGL_EXT_device_query" { found_EGL_EXT_device_query = true }
-                if ext == "EGL_EXT_device_enumeration" { found_EGL_EXT_device_enumeration = true }
-            });
-
-        //TODO EGL_EXT_device_query and EGL_EXT_device_enumeration not supported on the intel?
-        if !found_EGL_EXT_device_base { return Err(EGLError::from_str("EGL_EXT_device_base not supported")); }
-        // if !found_EGL_EXT_device_query { return Err(EGLError::from_str("EGL_EXT_device_query not supported")); }
-        // if !found_EGL_EXT_device_enumeration { return Err(EGLError::from_str("EGL_EXT_device_enumeration not supported")); }
+        use egl::extensions::Extensions;
+        let extensions = Extensions::query(None)?;
+        
+        //TODO EGL_EXT_device_query and EGL_EXT_device_enumeration not supported on nvidia?
+        if !extensions.contains("EGL_EXT_device_base") { return Err(EGLError::from_str("EGL_EXT_device_base not supported")); }
+        // if !extensions.contains("EGL_EXT_device_query") { return Err(EGLError::from_str("EGL_EXT_device_query not supported")); }
+        // if !extensions.contains("EGL_EXT_device_enumeration") { return Err(EGLError::from_str("EGL_EXT_device_enumeration not supported")); }
 
         egl::ffi::load_QueryDeviceStringEXT()
             .map_err(|_| EGLError::from_str("QueryDeviceStringEXT is necessary"))?;
@@ -52,6 +42,7 @@ impl EGLDevice {
             CStr::from_ptr(response)
         };
 
+        #[allow(non_snake_case)]
         let found_EGL_EXT_device_drm = supported_string_ext.to_string_lossy()
             .split_whitespace()
             // .map(|a| {
@@ -81,24 +72,13 @@ impl EGLDevice {
 
 pub fn get_egl_devices() ->Result<Vec<EGLDevice>, EGLError> {
 
-    let extensions = egl::query_extensions()?;
+    use egl::extensions::Extensions;
+    let extensions = Extensions::query(None)?;
 
-    let mut found_EGL_EXT_device_base = false;
-    let mut found_EGL_EXT_device_query = false;
-    let mut found_EGL_EXT_device_enumeration = false;
-    extensions.iter()
-        .for_each(|ext| {
-            println!("Extension: \"{}\"", ext);
-            let ext = ext.trim();
-            if ext == "EGL_EXT_device_base" { found_EGL_EXT_device_base = true }
-            if ext == "EGL_EXT_device_query" { found_EGL_EXT_device_query = true }
-            if ext == "EGL_EXT_device_enumeration" { found_EGL_EXT_device_enumeration = true }
-        });
-
-    //TODO EGL_EXT_device_query and EGL_EXT_device_enumeration not supported on the intel?
-    if !found_EGL_EXT_device_base { return Err(EGLError::from_str("EGL_EXT_device_base not supported")); }
-    // if !found_EGL_EXT_device_query { return Err(EGLError::from_str("EGL_EXT_device_query not supported")); }
-    // if !found_EGL_EXT_device_enumeration { return Err(EGLError::from_str("EGL_EXT_device_enumeration not supported")); }
+    //TODO EGL_EXT_device_query and EGL_EXT_device_enumeration not supported on nvidia?
+    if !extensions.contains("EGL_EXT_device_base") { return Err(EGLError::from_str("EGL_EXT_device_base not supported")); }
+    // if !extensions.contains("EGL_EXT_device_query") { return Err(EGLError::from_str("EGL_EXT_device_query not supported")); }
+    // if !extensions.contains("EGL_EXT_device_enumeration") { return Err(EGLError::from_str("EGL_EXT_device_enumeration not supported")); }
 
     egl::ffi::load_QueryDevicesEXT()
         .map_err(|_| EGLError::from_str("QueryDevicesEXT is necessary"))?;

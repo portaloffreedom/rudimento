@@ -15,8 +15,8 @@ use std::str;
 use std::string::String;
 use renderer::Renderer;
 use renderer::egl::EGLRenderer;
-use renderer::gbm::GBMRenderer;
-use renderer::pixman::PixmanRenderer;
+// use renderer::gbm::GBMRenderer;
+// use renderer::pixman::PixmanRenderer;
 
 pub struct DRMBackend {
     //compositor
@@ -29,7 +29,7 @@ pub struct DRMBackend {
     cursor_with: u64,
     cursor_height: u64,
     compositor: Compositor,
-    renderer: Box<Renderer>,
+    renderer: Box<EGLRenderer>,
 }
 
 pub struct DRMDevice {
@@ -139,6 +139,106 @@ impl DRMBackend {
 
         let renderer = DRMBackend::init_egl_renderer(&drm_device, use_pixman, use_egldevice)?;
 
+        // b->base.destroy = drm_destroy;
+        // b->base.repaint_begin = drm_repaint_begin;
+        // b->base.repaint_flush = drm_repaint_flush;
+        // b->base.repaint_cancel = drm_repaint_cancel;
+
+        // weston_setup_vt_switch_bindings(compositor);
+
+        // wl_list_init(&b->plane_list);
+        // create_sprites(b);
+
+        // if (udev_input_init(&b->input,
+        //             compositor, b->udev, seat_id,
+        //             config->configure_device) < 0) {
+        //     weston_log("failed to create input devices\n");
+        //     goto err_sprite;
+        // }
+
+        // if (create_outputs(b, drm_device) < 0) {
+        //     weston_log("failed to create output for %s\n", b->drm.filename);
+        //     goto err_udev_input;
+        // }
+
+        // /* A this point we have some idea of whether or not we have a working
+        // * cursor plane. */
+        // if (!b->cursors_are_broken)
+        //     compositor->capabilities |= WESTON_CAP_CURSOR_PLANE;
+
+        // loop = wl_display_get_event_loop(compositor->wl_display);
+        // b->drm_source =
+        //     wl_event_loop_add_fd(loop, b->drm.fd,
+        //                 WL_EVENT_READABLE, on_drm_input, b);
+
+        // b->udev_monitor = udev_monitor_new_from_netlink(b->udev, "udev");
+        // if (b->udev_monitor == NULL) {
+        //     weston_log("failed to initialize udev monitor\n");
+        //     goto err_drm_source;
+        // }
+        // udev_monitor_filter_add_match_subsystem_devtype(b->udev_monitor,
+        //                         "drm", NULL);
+        // b->udev_drm_source =
+        //     wl_event_loop_add_fd(loop,
+        //                 udev_monitor_get_fd(b->udev_monitor),
+        //                 WL_EVENT_READABLE, udev_drm_event, b);
+
+        // if (udev_monitor_enable_receiving(b->udev_monitor) < 0) {
+        //     weston_log("failed to enable udev-monitor receiving\n");
+        //     goto err_udev_monitor;
+        // }
+
+        // udev_device_unref(drm_device);
+
+        // weston_compositor_add_debug_binding(compositor, KEY_O,
+        //                     planes_binding, b);
+        // weston_compositor_add_debug_binding(compositor, KEY_C,
+        //                     planes_binding, b);
+        // weston_compositor_add_debug_binding(compositor, KEY_V,
+        //                     planes_binding, b);
+        // weston_compositor_add_debug_binding(compositor, KEY_Q,
+        //                     recorder_binding, b);
+        // weston_compositor_add_debug_binding(compositor, KEY_W,
+        //                     renderer_switch_binding, b);
+
+        // if (compositor->renderer->import_dmabuf) {
+        //     if (linux_dmabuf_setup(compositor) < 0)
+        //         weston_log("Error: initializing dmabuf "
+        //             "support failed.\n");
+        // }
+
+        // ret = weston_plugin_api_register(compositor, WESTON_DRM_OUTPUT_API_NAME,
+        //                 &api, sizeof(api));
+
+        // if (ret < 0) {
+        //     weston_log("Failed to register output API.\n");
+        //     goto err_udev_monitor;
+        // }
+
+        // return b;
+
+        // err_udev_monitor:
+        // wl_event_source_remove(b->udev_drm_source);
+        // udev_monitor_unref(b->udev_monitor);
+        // err_drm_source:
+        // wl_event_source_remove(b->drm_source);
+        // err_udev_input:
+        // udev_input_destroy(&b->input);
+        // err_sprite:
+        // if (b->gbm)
+        //     gbm_device_destroy(b->gbm);
+        // destroy_sprites(b);
+        // err_udev_dev:
+        // udev_device_unref(drm_device);
+        // err_launcher:
+        // weston_launcher_destroy(compositor->launcher);
+        // err_udev:
+        // udev_unref(b->udev);
+        // err_compositor:
+        // weston_compositor_shutdown(compositor);
+        // free(b);
+        // return NULL;
+
         Ok(Box::new(DRMBackend {
             use_pixman,
             use_egldevice,
@@ -216,25 +316,27 @@ impl DRMBackend {
         Ok(devnode.to_path_buf())
     }
 
-    fn init_egl_renderer(drm_device: &DRMDevice, use_pixman: bool, use_egldevice: bool) -> Result<Box<Renderer>, DRMBackendError> {
+    fn init_egl_renderer(drm_device: &DRMDevice, use_pixman: bool, use_egldevice: bool) -> Result<Box<EGLRenderer>, DRMBackendError> {
         let renderer_result =
             if use_pixman {
-                PixmanRenderer::new()
-                    .map(|renderer| renderer as Box<Renderer>)
+                Err("PixmanRenderer not supported yet".to_string())
+                // PixmanRenderer::new()
+                //     .map(|renderer| renderer as Box<Renderer>)
             } else { // use egl
                 if use_egldevice { // use eglstream (NVIDIA)
                     EGLRenderer::from_drm_device_file(drm_device)
-                        .map(|renderer| renderer as Box<Renderer>)
+                        // .map(|renderer| renderer as Box<Renderer>)
                         .map_err(|e| format!("{}", e))
                 } else {  // use GBM (mesa)
-                    GBMRenderer::new(drm_device.rawfd())
-                        .map(|renderer| renderer as Box<Renderer>)
+                    Err("GBMRenderer not supported yet".to_string())
+                    // GBMRenderer::new(drm_device.rawfd())
+                    //     .map(|renderer| renderer as Box<Renderer>)
                 }
             };
 
         renderer_result
             .map_err(|e| DRMBackendError {
-                description: format!("{:?}", e)
+                description: format!("{}", e)
             })
     }
 }

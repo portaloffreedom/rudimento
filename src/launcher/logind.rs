@@ -336,7 +336,10 @@ impl Launcher for LogindLauncher {
 
 impl Drop for LogindLauncher {
     fn drop(&mut self) {
-        self.release_control();
+        match self.release_control() {
+            Err(message) => println!("{}", message),
+            _ => {}
+        }; 
 
         //maybe close?
         match self.device_path {
