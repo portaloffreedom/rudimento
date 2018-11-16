@@ -1,17 +1,33 @@
 use renderer::Renderer;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use egl::types::*;
+use libc;
+use std::ffi::{CString, CStr};
+use super::image;
+use gbm;
 
 pub struct GBMRenderer {
-
+    device: gbm::Device<gbm::FdWrapper>,
 }
 
 impl GBMRenderer {
-    pub fn new(fd: RawFd) -> Result<Box<Self>, String> { 
-        //TODO find gbm library in crates.io
-        //TODO load libglapi.so.0
+    pub fn new(fd: RawFd) -> Result<Box<Self>, String> {
 
-        //TODO device = gbm_create_device(fd);
+
+        let libname = CString::new("libglapi.so.0").expect("CString::new failed");;
+        let r: *mut libc::c_void = unsafe { 
+            libc::dlopen(libname.as_ptr(), libc::RTLD_LAZY | libc::RTLD_GLOBAL)
+        };
+
+        if r.is_null() {
+            let error = unsafe { CStr::from_ptr(libc::dlerror()) };
+            return Err(format!("Error loading \"libglapi.so.0\" dlerror:\n{:?}", error))
+        }
+
+        // unsafe: device has to outlive file descriptor
+        let device = unsafe { gbm::Device::new_from_fd(fd) }
+            .map_err(|e| format!("Could not create GDB Device: {}", e))?;
+
 
         //TODO init renderer
         //		EGLint format[3] = {
@@ -32,7 +48,13 @@ impl GBMRenderer {
 		// 				   format,
 		// 				   n_formats);
 
-        Err("GBMRenderer not yet implemtended".to_string())
+        
+
+        // Err("GBMRenderer not yet implemtended".to_string())
+
+        Ok(Box::new(Self {
+            device,
+        }))
     }
 }
 
@@ -45,7 +67,7 @@ impl Renderer for GBMRenderer {
         target: EGLenum,
         buffer: EGLClientBuffer,
         attrib_list: &Vec<EGLint>
-    ) -> EGLImageKHR
+    ) -> Result<Box<image::Image>, ::egl::EGLError>
     {
         panic!("not implemented yet");
     }

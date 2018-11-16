@@ -1,7 +1,8 @@
-// pub mod pixman;
+pub mod pixman;
 pub mod egl;
-// pub mod gbm;
+pub mod gbm;
 pub mod image;
+pub mod gl;
 
 use wayland;
 use egl::types::*;

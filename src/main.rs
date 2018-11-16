@@ -8,6 +8,7 @@ extern crate drm as libdrm;
 extern crate wayland_server;
 #[macro_use]
 extern crate mashup;
+extern crate gbm;
 
 mod compositor;
 mod systemd;
@@ -25,8 +26,8 @@ use backend::Backend;
 
 fn main() {
     let use_pixman = false;
-    let use_egldevice = true;
-    let tty = 2;
+    let use_egldevice = false;
+    let tty = 3;
 
     let backend = match drm::DRMBackend::new(tty, use_pixman, use_egldevice) {
         Ok(b) => b,

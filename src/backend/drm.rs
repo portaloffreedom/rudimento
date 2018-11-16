@@ -15,7 +15,7 @@ use std::str;
 use std::string::String;
 use renderer::Renderer;
 use renderer::egl::EGLRenderer;
-// use renderer::gbm::GBMRenderer;
+use renderer::gbm::GBMRenderer;
 // use renderer::pixman::PixmanRenderer;
 
 pub struct DRMBackend {
@@ -29,7 +29,7 @@ pub struct DRMBackend {
     cursor_with: u64,
     cursor_height: u64,
     compositor: Compositor,
-    renderer: Box<EGLRenderer>,
+    renderer: Box<GBMRenderer>,
 }
 
 pub struct DRMDevice {
@@ -316,7 +316,7 @@ impl DRMBackend {
         Ok(devnode.to_path_buf())
     }
 
-    fn init_egl_renderer(drm_device: &DRMDevice, use_pixman: bool, use_egldevice: bool) -> Result<Box<EGLRenderer>, DRMBackendError> {
+    fn init_egl_renderer(drm_device: &DRMDevice, use_pixman: bool, use_egldevice: bool) -> Result<Box<GBMRenderer>, DRMBackendError> {
         let renderer_result =
             if use_pixman {
                 Err("PixmanRenderer not supported yet".to_string())
@@ -324,13 +324,14 @@ impl DRMBackend {
                 //     .map(|renderer| renderer as Box<Renderer>)
             } else { // use egl
                 if use_egldevice { // use eglstream (NVIDIA)
-                    EGLRenderer::from_drm_device_file(drm_device)
+                    Err("EGLStream not supported yet".to_string())
+                    // EGLRenderer::from_drm_device_file(drm_device)
                         // .map(|renderer| renderer as Box<Renderer>)
-                        .map_err(|e| format!("{}", e))
+                        // .map_err(|e| format!("{}", e))
                 } else {  // use GBM (mesa)
-                    Err("GBMRenderer not supported yet".to_string())
-                    // GBMRenderer::new(drm_device.rawfd())
-                    //     .map(|renderer| renderer as Box<Renderer>)
+                    // Err("GBMRenderer not supported yet".to_string())
+                    GBMRenderer::new(drm_device.rawfd())
+                        // .map(|renderer| renderer as Box<Renderer>)
                 }
             };
 
