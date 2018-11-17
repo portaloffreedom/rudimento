@@ -27,16 +27,18 @@ use backend::Backend;
 fn main() {
     let use_pixman = false;
     let use_egldevice = false;
-    let tty = 3;
+    let tty = 2;
 
-    let backend = match drm::DRMBackend::new(tty, use_pixman, use_egldevice) {
-        Ok(b) => b,
-        Err(error) => {
-            println!("{}", error.description());
-            println!("exiting now");
-            std::process::exit(1);
-        }
-    };
+    {
+        let backend = match drm::DRMBackend::new(tty, use_pixman, use_egldevice) {
+            Ok(b) => b,
+            Err(error) => {
+                println!("{}", error.description());
+                println!("exiting now");
+                std::process::exit(1);
+            }
+        };
+    }
 
     // parse args
 

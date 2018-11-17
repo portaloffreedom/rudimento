@@ -1,18 +1,19 @@
 use renderer::Renderer;
+use backend::drm::DRMDevice;
 use std::os::unix::io::{AsRawFd, RawFd};
 use egl::types::*;
 use libc;
 use std::ffi::{CString, CStr};
 use super::image;
 use gbm;
+use libdrm;
 
 pub struct GBMRenderer {
-    device: gbm::Device<gbm::FdWrapper>,
+    device: gbm::Device<DRMDevice>,
 }
 
 impl GBMRenderer {
-    pub fn new(fd: RawFd) -> Result<Box<Self>, String> {
-
+    pub fn new(drm_device: DRMDevice) -> Result<Box<Self>, String> {
 
         let libname = CString::new("libglapi.so.0").expect("CString::new failed");;
         let r: *mut libc::c_void = unsafe { 
@@ -24,10 +25,62 @@ impl GBMRenderer {
             return Err(format!("Error loading \"libglapi.so.0\" dlerror:\n{:?}", error))
         }
 
+        // Get a set of all modesetting resource handles (excluding planes):
+        use libdrm::control::Device as libdrm_device;
+        let res_handles = drm_device.resource_handles().unwrap();
+
+        println!("\nConnector Informations");
+        // Print all connector information
+        for &con in res_handles.connectors() {
+            let info: libdrm::control::connector::Info 
+                = drm_device.resource_info(con).unwrap();
+
+            println!("{:#?}", info);
+        }
+
+        println!("\nCRTCs Informations");
+        // Print all CRTC information
+        for &crtc in res_handles.crtcs() {
+            let info: drm::control::crtc::Info 
+                = drm_device.resource_info(crtc).unwrap();
+
+            println!("{:?}", info);
+        }
+
         // unsafe: device has to outlive file descriptor
-        let device = unsafe { gbm::Device::new_from_fd(fd) }
+        let gbm = gbm::Device::new(drm_device)
+        // let gbm = unsafe { gbm::Device::new_from_fd(drm_devide.as_raw_fd()) }
             .map_err(|e| format!("Could not create GDB Device: {}", e))?;
 
+        use libdrm::control::{crtc, framebuffer};
+        use gbm::{Device, Format, BufferObjectFlags};
+        let mut bo = gbm.create_buffer_object::<()>(
+            1920, 1080,
+            Format::ARGB8888,
+            BufferObjectFlags::SCANOUT,
+            ).unwrap();
+        
+        // write something to it (usually use import or egl rendering instead)
+        let buffer = {
+            let mut buffer = Vec::new();
+            for i in 0..1920 {
+                for _ in 0..1080 {
+                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
+                }
+            }
+            buffer
+        };
+        bo.write(&buffer).unwrap();
+
+        // create a framebuffer from our buffer
+        let fb_info = framebuffer::create(&gbm, &bo).unwrap();
+
+        // display it (and get a crtc, mode and connector before)
+        use libdrm::control::ResourceInfo;
+        // crtc::set(&gbm, crtc_handle, fb_info.handle(), &[con], (0, 0), Some(mode)).unwrap();
+
+        use std::thread;
+        thread::sleep_ms(2000);
 
         //TODO init renderer
         //		EGLint format[3] = {
@@ -53,7 +106,7 @@ impl GBMRenderer {
         // Err("GBMRenderer not yet implemtended".to_string())
 
         Ok(Box::new(Self {
-            device,
+            device: gbm,
         }))
     }
 }

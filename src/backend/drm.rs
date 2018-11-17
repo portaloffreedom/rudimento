@@ -6,10 +6,12 @@ use compositor::Compositor;
 use libudev;
 use libc;
 
+use libdrm;
 use std::borrow::Borrow;
 use std::error::Error as StdError;
 use std::fmt;
 use std::os::unix::io::RawFd;
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
@@ -32,6 +34,7 @@ pub struct DRMBackend {
     renderer: Box<GBMRenderer>,
 }
 
+#[derive(Clone)]
 pub struct DRMDevice {
     fd: RawFd,
     filename: PathBuf,
@@ -45,6 +48,7 @@ impl DRMDevice {
         }
     }
 
+    //TODO remove
     pub fn rawfd(&self) -> RawFd {
         self.fd
     }
@@ -53,6 +57,16 @@ impl DRMDevice {
         &self.filename
     }
 }
+
+impl AsRawFd for DRMDevice {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
+    }
+}
+
+impl libdrm::Device for DRMDevice {}
+impl libdrm::control::Device for DRMDevice {}
+
 
 #[derive(Debug)]
 struct DRMBackendError {
@@ -73,6 +87,24 @@ impl fmt::Display for DRMBackendError {
 
 impl Backend for DRMBackend {
 }
+
+// mod ffi {
+// #[link(name = "drm")]
+// #[allow(dead_code)]
+//     use libc::*;
+//     use std::os::unix::io::RawFd;
+//     extern {
+//         fn drmGetCap(fd: c_int, capability: uint64_t, value: *mut uint64_t) -> c_int;
+//     }
+
+//     /// Check if a capability is set.
+//     pub fn get_cap(fd: RawFd, cap: u32) -> Result<u64, i32> {
+//         let mut value = 0;
+//         let result = unsafe { drmGetCap(fd, cap as u64, &mut value) };
+
+//         if result == 0 { Ok(value) } else { Err(result) }
+//     }
+// }
 
 impl DRMBackend {
     pub fn new(tty: u32, use_pixman: bool, use_egldevice: bool) -> backend::Result<Box<Self>> {
@@ -103,21 +135,25 @@ impl DRMBackend {
         };
 
         let drm_device = DRMDevice::new(fd, device_devnode_path);
+        const DRM_CAP_TIMESTAMP_MONOTONIC: u32 = 6;
+        const DRM_CAP_CURSOR_WIDTH: u32 = 8;
+        const DRM_CAP_CURSOR_HEIGHT: u32 = 9;
 
-        use libdrm::drm::{get_cap,Capability};
-        let clock_type = match get_cap(drm_device.rawfd(), Capability::TimestampMonotonic) {
-            Ok(cap) => {
-                if cap == 1 {
-                    libc::CLOCK_MONOTONIC
-                } else {
-                    libc::CLOCK_REALTIME
-                }
-            },
-            Err(e) => {
-                println!("drm get capabilities failed with return code {}", e);
-                libc::CLOCK_REALTIME
-            },
-        };
+        // use libdrm::ffi::drm_get_cap as get_cap;
+        // let clock_type = match ffi::get_cap(drm_device.as_raw_fd(), DRM_CAP_TIMESTAMP_MONOTONIC) {
+        //     Ok(cap) => {
+        //         if cap == 1 {
+        //             libc::CLOCK_MONOTONIC
+        //         } else {
+        //             libc::CLOCK_REALTIME
+        //         }
+        //     },
+        //     Err(e) => {
+        //         println!("drm get capabilities failed with return code {}", e);
+        //         libc::CLOCK_REALTIME
+        //     },
+        // };
+        let clock_type = libc::CLOCK_REALTIME;
 
         let compositor = match Compositor::new(clock_type) {
             Ok(c) => c,
@@ -127,15 +163,17 @@ impl DRMBackend {
         };
 
 
-        let cursor_with = match get_cap(drm_device.rawfd(), Capability::CursorWidth) {
-            Ok(cap) => cap,
-            Err(_) => 64,
-        };
+        // let cursor_with = match ffi::get_cap(drm_device.rawfd(), DRM_CAP_CURSOR_WIDTH) {
+        //     Ok(cap) => cap,
+        //     Err(_) => 64,
+        // };
+        let cursor_with = 64;
 
-        let cursor_height = match get_cap(drm_device.rawfd(), Capability::CursorHeight) {
-            Ok(cap) => cap,
-            Err(_) => 64,
-        };
+        // let cursor_height = match ffi::get_cap(drm_device.rawfd(), DRM_CAP_CURSOR_HEIGHT) {
+        //     Ok(cap) => cap,
+        //     Err(_) => 64,
+        // };
+        let cursor_height = 64;
 
         let renderer = DRMBackend::init_egl_renderer(&drm_device, use_pixman, use_egldevice)?;
 
@@ -330,7 +368,7 @@ impl DRMBackend {
                         // .map_err(|e| format!("{}", e))
                 } else {  // use GBM (mesa)
                     // Err("GBMRenderer not supported yet".to_string())
-                    GBMRenderer::new(drm_device.rawfd())
+                    GBMRenderer::new(drm_device.clone())
                         // .map(|renderer| renderer as Box<Renderer>)
                 }
             };
