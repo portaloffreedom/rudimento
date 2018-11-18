@@ -38,9 +38,10 @@ impl GBMRenderer {
             println!("{:?}", info);
         }
 
-        let con = res_handles.connectors()[0];
+        let con = res_handles.connectors().iter().next()
+            .expect("No Card Connector found");
         let connector_info: libdrm::control::connector::Info
-            = drm_device.resource_info(con).unwrap();
+            = drm_device.resource_info(*con).unwrap();
         let mode = connector_info.modes()[0];
         let (hdisplay, vdisplay) = mode.size();
 
@@ -53,82 +54,79 @@ impl GBMRenderer {
             println!("{:?}", info);
         }
 
-        let crtc_handle = res_handles.crtcs()[0];
-    
-        // Create a DB of size 1920x1080
-        use libdrm::control::dumbbuffer;
-        use libdrm::buffer::PixelFormat;
-        let mut db = dumbbuffer::DumbBuffer::create_from_device(&drm_device, (hdisplay.into(), vdisplay.into()), PixelFormat::XRGB8888)
-            .expect("Could not create dumb buffer");
-
-        // Map it and grey it out.
-        {
-            let mut map = db.map(&drm_device).expect("Could not map dumbbuffer");
-            for mut b in map.as_mut() {
-                *b = 128; // Grey
-            }
-        }
-
-        // create a framebuffer from our buffer
-        use libdrm::control::{crtc, framebuffer};
-        let fb_info = framebuffer::create(&drm_device, &db)
-            .expect("could not create FrameBuffer");
-
-        println!("\n\nMode, fbinfo, db");
-        println!("{:#?}", mode);
-        println!("{:#?}", fb_info);
-        println!("{:#?}", db);
-
-        use libdrm::control::ResourceInfo;
-        crtc::set(
-            &drm_device,
-            crtc_handle,
-            fb_info.handle(),
-            &[con],
-            (0,0),
-            Some(mode),
-        )
-        .expect("Could not set CRTC");
-
-        use std::thread;
-        thread::sleep_ms(2000);
-
-        framebuffer::destroy(&drm_device, fb_info.handle()).unwrap();
-        db.destroy(&drm_device).unwrap();
+        //TODO maybe select a better one than the first
+        let crtc_handle = res_handles.crtcs().iter().next()
+            .expect("No CRTC handle found");
 
         let gbm = gbm::Device::new(drm_device)
         // unsafe: device has to outlive file descriptor
         // let gbm = unsafe { gbm::Device::new_from_fd(drm_devide.as_raw_fd()) }
             .map_err(|e| format!("Could not create GDB Device: {}", e))?;
 
-        // use libdrm::control::{crtc, framebuffer};
-        // use gbm::{Device, Format, BufferObjectFlags};
-        // let mut bo = gbm.create_buffer_object::<()>(
-        //     1920, 1080,
-        //     Format::ARGB8888,
-        //     BufferObjectFlags::SCANOUT,
-        //     ).unwrap();
+        use libdrm::control::{crtc, framebuffer};
+        use gbm::{Device, Format, BufferObjectFlags};
+        let mut bo = gbm.create_buffer_object::<()>(
+            hdisplay.into(), vdisplay.into(),
+            Format::XRGB8888,
+            BufferObjectFlags::SCANOUT | BufferObjectFlags::WRITE,
+            )
+            .expect("Could not create Buffer Object");
 
-        // for i in 0..10 {
-        //     // write something to it (usually use import or egl rendering instead)
-        //     let buffer = {
-        //         let mut buffer = Vec::new();
-        //         for i in 0..1920 {
-        //             for _ in 0..1080 {
-        //                 buffer.push(if i % 2 == 0 { 0 } else { 255 });
-        //             }
-        //         }
-        //         buffer
-        //     };
-        //     bo.write(&buffer).unwrap();
+        // write something to it (usually use import or egl rendering instead)
+        let buffer = {
+            let mut buffer = Vec::<u8>::new();
+            for i in 0..vdisplay {
+                for _ in 0..hdisplay {
+                    // XRGB8888
+                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
+                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
+                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
+                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
+                }
+            }
+            buffer
+        };
+        bo.write(&buffer)
+            .expect("Buffer Object write failed")
+            .expect("Buffer Object write failed 2");
 
-        //     // create a framebuffer from our buffer
-        //     let fb_info = framebuffer::create(&gbm, &bo).unwrap();
+        // create a framebuffer from our buffer
+        let fb_info = framebuffer::create(&gbm, &bo)
+            .expect("framebuffer create failed");
 
-        //     // display it (and get a crtc, mode and connector before)
-        //     use libdrm::control::ResourceInfo;
-        //     crtc::set(&gbm, crtc_handle, fb_info.handle(), &[con], (0, 0), Some(mode)).unwrap();
-        // }
+        // display it (and get a crtc, mode and connector before)
+        use libdrm::control::ResourceInfo;
+        crtc::set(&gbm, *crtc_handle, fb_info.handle(), &[*con], (0, 0), Some(mode))
+            .expect("display framebuffer to the crtc failed");
+
+        use std::thread;
+        thread::sleep_ms(2000);
+
+
+        // write something to it (usually use import or egl rendering instead)
+        let buffer = {
+            let mut buffer = Vec::<u8>::new();
+            for i in 0..vdisplay {
+                for _ in 0..hdisplay {
+                    // XRGB8888
+                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
+                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
+                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
+                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
+                }
+            }
+            buffer
+        };
+        bo.write(&buffer)
+            .expect("Buffer Object write failed")
+            .expect("Buffer Object write failed 2");
+
+        // https://github.com/dvdhrm/docs/commit/87d3698967a148174cdaa97a068b23ca2387c798
+        // https://docs.rs/drm/0.3.4/drm/control/crtc/fn.page_flip.html
+        crtc::page_flip(&gbm, *crtc_handle, fb_info.handle(), &[crtc::PageFlipFlags::PageFlipEvent])
+            .expect("Page Flip schedule failed");
+
+        thread::sleep_ms(2000);
 
         //TODO init renderer
         //		EGLint format[3] = {
