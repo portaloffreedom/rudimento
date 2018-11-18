@@ -35,8 +35,14 @@ impl GBMRenderer {
             let info: libdrm::control::connector::Info 
                 = drm_device.resource_info(con).unwrap();
 
-            println!("{:#?}", info);
+            println!("{:?}", info);
         }
+
+        let con = res_handles.connectors()[0];
+        let connector_info: libdrm::control::connector::Info
+            = drm_device.resource_info(con).unwrap();
+        let mode = connector_info.modes()[0];
+        let (hdisplay, vdisplay) = mode.size();
 
         println!("\nCRTCs Informations");
         // Print all CRTC information
@@ -47,40 +53,82 @@ impl GBMRenderer {
             println!("{:?}", info);
         }
 
-        // unsafe: device has to outlive file descriptor
-        let gbm = gbm::Device::new(drm_device)
-        // let gbm = unsafe { gbm::Device::new_from_fd(drm_devide.as_raw_fd()) }
-            .map_err(|e| format!("Could not create GDB Device: {}", e))?;
+        let crtc_handle = res_handles.crtcs()[0];
+    
+        // Create a DB of size 1920x1080
+        use libdrm::control::dumbbuffer;
+        use libdrm::buffer::PixelFormat;
+        let mut db = dumbbuffer::DumbBuffer::create_from_device(&drm_device, (hdisplay.into(), vdisplay.into()), PixelFormat::XRGB8888)
+            .expect("Could not create dumb buffer");
 
-        use libdrm::control::{crtc, framebuffer};
-        use gbm::{Device, Format, BufferObjectFlags};
-        let mut bo = gbm.create_buffer_object::<()>(
-            1920, 1080,
-            Format::ARGB8888,
-            BufferObjectFlags::SCANOUT,
-            ).unwrap();
-        
-        // write something to it (usually use import or egl rendering instead)
-        let buffer = {
-            let mut buffer = Vec::new();
-            for i in 0..1920 {
-                for _ in 0..1080 {
-                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
-                }
+        // Map it and grey it out.
+        {
+            let mut map = db.map(&drm_device).expect("Could not map dumbbuffer");
+            for mut b in map.as_mut() {
+                *b = 128; // Grey
             }
-            buffer
-        };
-        bo.write(&buffer).unwrap();
+        }
 
         // create a framebuffer from our buffer
-        let fb_info = framebuffer::create(&gbm, &bo).unwrap();
+        use libdrm::control::{crtc, framebuffer};
+        let fb_info = framebuffer::create(&drm_device, &db)
+            .expect("could not create FrameBuffer");
 
-        // display it (and get a crtc, mode and connector before)
+        println!("\n\nMode, fbinfo, db");
+        println!("{:#?}", mode);
+        println!("{:#?}", fb_info);
+        println!("{:#?}", db);
+
         use libdrm::control::ResourceInfo;
-        // crtc::set(&gbm, crtc_handle, fb_info.handle(), &[con], (0, 0), Some(mode)).unwrap();
+        crtc::set(
+            &drm_device,
+            crtc_handle,
+            fb_info.handle(),
+            &[con],
+            (0,0),
+            Some(mode),
+        )
+        .expect("Could not set CRTC");
 
         use std::thread;
         thread::sleep_ms(2000);
+
+        framebuffer::destroy(&drm_device, fb_info.handle()).unwrap();
+        db.destroy(&drm_device).unwrap();
+
+        let gbm = gbm::Device::new(drm_device)
+        // unsafe: device has to outlive file descriptor
+        // let gbm = unsafe { gbm::Device::new_from_fd(drm_devide.as_raw_fd()) }
+            .map_err(|e| format!("Could not create GDB Device: {}", e))?;
+
+        // use libdrm::control::{crtc, framebuffer};
+        // use gbm::{Device, Format, BufferObjectFlags};
+        // let mut bo = gbm.create_buffer_object::<()>(
+        //     1920, 1080,
+        //     Format::ARGB8888,
+        //     BufferObjectFlags::SCANOUT,
+        //     ).unwrap();
+
+        // for i in 0..10 {
+        //     // write something to it (usually use import or egl rendering instead)
+        //     let buffer = {
+        //         let mut buffer = Vec::new();
+        //         for i in 0..1920 {
+        //             for _ in 0..1080 {
+        //                 buffer.push(if i % 2 == 0 { 0 } else { 255 });
+        //             }
+        //         }
+        //         buffer
+        //     };
+        //     bo.write(&buffer).unwrap();
+
+        //     // create a framebuffer from our buffer
+        //     let fb_info = framebuffer::create(&gbm, &bo).unwrap();
+
+        //     // display it (and get a crtc, mode and connector before)
+        //     use libdrm::control::ResourceInfo;
+        //     crtc::set(&gbm, crtc_handle, fb_info.handle(), &[con], (0, 0), Some(mode)).unwrap();
+        // }
 
         //TODO init renderer
         //		EGLint format[3] = {
