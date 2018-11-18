@@ -27,7 +27,7 @@ use backend::Backend;
 fn main() {
     let use_pixman = false;
     let use_egldevice = false;
-    let tty = 2;
+    let tty = None; //Some(2);
 
     {
         let backend = match drm::DRMBackend::new(tty, use_pixman, use_egldevice) {
