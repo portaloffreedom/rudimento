@@ -76,12 +76,12 @@ impl GBMRenderer {
         let buffer = {
             let mut buffer = Vec::<u8>::new();
             for i in 0..vdisplay {
-                for _ in 0..hdisplay {
+                for j in 0..hdisplay {
                     // XRGB8888
-                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
-                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
-                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
-                    buffer.push(if i % 2 == 0 { 0 } else { 255 });
+                    buffer.push(if i % 2 == 0 { 0   } else { 0   }); // Blue
+                    buffer.push(if i % 2 == 0 { 255 } else { 0   }); // Green
+                    buffer.push(if i % 2 == 0 { 0   } else { 0   }); // Red
+                    buffer.push(if j % 2 == 0 { 0   } else { 255 }); // Nothing
                 }
             }
             buffer
@@ -100,33 +100,114 @@ impl GBMRenderer {
             .expect("display framebuffer to the crtc failed");
 
         use std::thread;
-        thread::sleep_ms(2000);
+        thread::sleep_ms(100);
 
+
+        let mut bo2 = gbm.create_buffer_object::<()>(
+            hdisplay.into(), vdisplay.into(),
+            Format::XRGB8888,
+            BufferObjectFlags::SCANOUT | BufferObjectFlags::WRITE,
+            )
+            .expect("Could not create Buffer Object");
 
         // write something to it (usually use import or egl rendering instead)
         let buffer = {
             let mut buffer = Vec::<u8>::new();
             for i in 0..vdisplay {
-                for _ in 0..hdisplay {
+                for j in 0..hdisplay {
                     // XRGB8888
-                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
-                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
-                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
-                    buffer.push(if i % 4 == 0 { 0 } else { 255 });
+                    buffer.push(255);//if i % 2 == 0 { 0   } else { 0   }); // Blue
+                    buffer.push(255);//if i % 2 == 0 { 255 } else { 0   }); // Green
+                    buffer.push(255);//if i % 2 == 0 { 0   } else { 255 }); // Red
+                    buffer.push(if j % 2 == 0 { 0   } else { 255 }); // Nothing
                 }
             }
             buffer
         };
-        bo.write(&buffer)
+        bo2.write(&buffer)
             .expect("Buffer Object write failed")
             .expect("Buffer Object write failed 2");
 
+
+        let fb_info_2 = framebuffer::create(&gbm, &bo2)
+            .expect("framebuffer create failed");
+
+        crtc::set(&gbm, *crtc_handle, fb_info_2.handle(), &[*con], (0, 0), Some(mode))
+            .expect("display framebuffer to the crtc failed");
+
+        thread::sleep_ms(100);
+        
         // https://github.com/dvdhrm/docs/commit/87d3698967a148174cdaa97a068b23ca2387c798
         // https://docs.rs/drm/0.3.4/drm/control/crtc/fn.page_flip.html
         crtc::page_flip(&gbm, *crtc_handle, fb_info.handle(), &[crtc::PageFlipFlags::PageFlipEvent])
             .expect("Page Flip schedule failed");
 
-        thread::sleep_ms(2000);
+        thread::sleep_ms(100);
+
+        { // Test VSYNC
+
+            let vdisplay = vdisplay as usize;
+            let hdisplay = hdisplay as usize;
+
+            let threads_n = 8_usize;
+            let thread_handles = (0..threads_n).into_iter().map(|thread_id| {
+                use std::thread;
+                thread::Builder::new().name(format!("vsync test builder {}", thread_id))
+                    .spawn(move || {
+                        let mut mother_buffer = Vec::<u8>::new();
+                        for i in 0..vdisplay {
+                            for j in 0..hdisplay {
+                                // XRGB8888
+                                mother_buffer.push(0); // Blue
+                                mother_buffer.push(255); // Green
+                                mother_buffer.push(0); // Red
+                                mother_buffer.push(255); // Nothing
+                            }
+                        }
+                        let mut buffers = Vec::new();
+                        let partition = (128/threads_n) as usize;
+                        for c in ((partition*thread_id)..(partition*(thread_id+1))) {
+                            let mut i = 0;
+                            let mut j = 0;
+                            let mut quartet_counter = 0;
+                            for byte in mother_buffer.iter_mut() {
+                                quartet_counter = quartet_counter + 1;
+
+                                j = j+quartet_counter/4;
+                                quartet_counter = quartet_counter%4;
+
+                                i = i + j/hdisplay;
+                                j = j%hdisplay;
+
+                                let is_black = (c*3 + j) < (hdisplay/3) || (c*3 + j) > (hdisplay*2/3);
+                                let color: u8 = if is_black { 0 } else { 255 };
+                                *byte = color;
+                            }
+                            
+                            buffers.push(mother_buffer.clone());
+                        }
+                        buffers
+                }).expect("Could not start thread ")
+            }).collect::<Vec<_>>();
+
+            let buffers = thread_handles.into_iter().flat_map(|handle| {
+                handle.join().expect("Error running thread")
+            }).collect::<Vec<_>>();
+
+            let mut bos = vec![(bo, fb_info), (bo2,fb_info_2)];
+            let mut counter = 0;
+            for _ in 0..20 {
+                for buffer in buffers.iter() {
+                    counter += 1;
+                    let (bo, fb_info) = &mut bos[counter%2];
+                    bo.write(&buffer)
+                        .expect("Buffer Object write failed")
+                        .expect("Buffer Object write failed 2");
+                    crtc::set(&gbm, *crtc_handle, fb_info.handle(), &[*con], (0, 0), Some(mode))
+                        .expect("display framebuffer to the crtc failed");
+                }
+            }
+        }
 
         //TODO init renderer
         //		EGLint format[3] = {
