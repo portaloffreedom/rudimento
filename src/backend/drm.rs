@@ -176,6 +176,7 @@ impl DRMBackend {
         let cursor_height = 64;
 
         let renderer = DRMBackend::init_egl_renderer(&drm_device, use_pixman, use_egldevice)?;
+        renderer.test(&drm_device);
 
         // b->base.destroy = drm_destroy;
         // b->base.repaint_begin = drm_repaint_begin;

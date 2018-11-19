@@ -9,7 +9,7 @@ use gbm;
 use libdrm;
 
 pub struct GBMRenderer {
-    device: gbm::Device<DRMDevice>,
+    gbm: gbm::Device<DRMDevice>,
 }
 
 impl GBMRenderer {
@@ -25,8 +25,48 @@ impl GBMRenderer {
             return Err(format!("Error loading \"libglapi.so.0\" dlerror:\n{:?}", error))
         }
 
-        // Get a set of all modesetting resource handles (excluding planes):
+        let gbm = gbm::Device::new(drm_device)
+        // unsafe: device has to outlive file descriptor
+        // let gbm = unsafe { gbm::Device::new_from_fd(drm_devide.as_raw_fd()) }
+            .map_err(|e| format!("Could not create GDB Device: {}", e))?;
+
+        //TODO init renderer
+        //		EGLint format[3] = {
+		// 	b->gbm_format,
+		// 	fallback_format_for(b->gbm_format),
+		// 	0,
+		// };
+		// int n_formats = 2;
+        //
+		// if (format[1])
+		// 	n_formats = 3;
+        //
+		// return gl_renderer->display_create(b->compositor,
+		// 				   EGL_PLATFORM_GBM_KHR,
+		// 				   (void *)b->gbm,
+		// 				   NULL,
+		// 				   gl_renderer->opaque_attribs,
+		// 				   format,
+		// 				   n_formats);
+
+        
+
+        // Err("GBMRenderer not yet implemtended".to_string())
+
+        Ok(Box::new(Self {
+            gbm,
+        }))
+    }
+
+    pub fn test(&self, drm_device: &DRMDevice) {
+        use std::thread;
+        use std::time::Duration;
+        use gbm::{Format, BufferObjectFlags};
+        use libdrm::control::{crtc, framebuffer};
         use libdrm::control::Device as libdrm_device;
+        use libdrm::control::ResourceInfo;
+
+        // Get a set of all modesetting resource handles (excluding planes):
         let res_handles = drm_device.resource_handles().unwrap();
 
         println!("\nConnector Informations");
@@ -58,14 +98,7 @@ impl GBMRenderer {
         let crtc_handle = res_handles.crtcs().iter().next()
             .expect("No CRTC handle found");
 
-        let gbm = gbm::Device::new(drm_device)
-        // unsafe: device has to outlive file descriptor
-        // let gbm = unsafe { gbm::Device::new_from_fd(drm_devide.as_raw_fd()) }
-            .map_err(|e| format!("Could not create GDB Device: {}", e))?;
-
-        use libdrm::control::{crtc, framebuffer};
-        use gbm::{Device, Format, BufferObjectFlags};
-        let mut bo = gbm.create_buffer_object::<()>(
+        let mut bo = self.gbm.create_buffer_object::<()>(
             hdisplay.into(), vdisplay.into(),
             Format::XRGB8888,
             BufferObjectFlags::SCANOUT | BufferObjectFlags::WRITE,
@@ -91,19 +124,17 @@ impl GBMRenderer {
             .expect("Buffer Object write failed 2");
 
         // create a framebuffer from our buffer
-        let fb_info = framebuffer::create(&gbm, &bo)
+        let fb_info = framebuffer::create(&self.gbm, &bo)
             .expect("framebuffer create failed");
 
         // display it (and get a crtc, mode and connector before)
-        use libdrm::control::ResourceInfo;
-        crtc::set(&gbm, *crtc_handle, fb_info.handle(), &[*con], (0, 0), Some(mode))
+        crtc::set(&self.gbm, *crtc_handle, fb_info.handle(), &[*con], (0, 0), Some(mode))
             .expect("display framebuffer to the crtc failed");
 
-        use std::thread;
-        thread::sleep_ms(100);
+        thread::sleep(Duration::from_millis(100));
 
 
-        let mut bo2 = gbm.create_buffer_object::<()>(
+        let mut bo2 = self.gbm.create_buffer_object::<()>(
             hdisplay.into(), vdisplay.into(),
             Format::XRGB8888,
             BufferObjectFlags::SCANOUT | BufferObjectFlags::WRITE,
@@ -129,17 +160,17 @@ impl GBMRenderer {
             .expect("Buffer Object write failed 2");
 
 
-        let fb_info_2 = framebuffer::create(&gbm, &bo2)
+        let fb_info_2 = framebuffer::create(&self.gbm, &bo2)
             .expect("framebuffer create failed");
 
-        crtc::set(&gbm, *crtc_handle, fb_info_2.handle(), &[*con], (0, 0), Some(mode))
+        crtc::set(&self.gbm, *crtc_handle, fb_info_2.handle(), &[*con], (0, 0), Some(mode))
             .expect("display framebuffer to the crtc failed");
 
         thread::sleep_ms(100);
         
         // https://github.com/dvdhrm/docs/commit/87d3698967a148174cdaa97a068b23ca2387c798
         // https://docs.rs/drm/0.3.4/drm/control/crtc/fn.page_flip.html
-        crtc::page_flip(&gbm, *crtc_handle, fb_info.handle(), &[crtc::PageFlipFlags::PageFlipEvent])
+        crtc::page_flip(&self.gbm, *crtc_handle, fb_info.handle(), &[crtc::PageFlipFlags::PageFlipEvent])
             .expect("Page Flip schedule failed");
 
         thread::sleep_ms(100);
@@ -151,7 +182,6 @@ impl GBMRenderer {
 
             let threads_n = 8_usize;
             let thread_handles = (0..threads_n).into_iter().map(|thread_id| {
-                use std::thread;
                 thread::Builder::new().name(format!("vsync test builder {}", thread_id))
                     .spawn(move || {
                         let mut mother_buffer = Vec::<u8>::new();
@@ -203,38 +233,11 @@ impl GBMRenderer {
                     bo.write(&buffer)
                         .expect("Buffer Object write failed")
                         .expect("Buffer Object write failed 2");
-                    crtc::set(&gbm, *crtc_handle, fb_info.handle(), &[*con], (0, 0), Some(mode))
+                    crtc::set(&self.gbm, *crtc_handle, fb_info.handle(), &[*con], (0, 0), Some(mode))
                         .expect("display framebuffer to the crtc failed");
                 }
             }
         }
-
-        //TODO init renderer
-        //		EGLint format[3] = {
-		// 	b->gbm_format,
-		// 	fallback_format_for(b->gbm_format),
-		// 	0,
-		// };
-		// int n_formats = 2;
-        //
-		// if (format[1])
-		// 	n_formats = 3;
-        //
-		// return gl_renderer->display_create(b->compositor,
-		// 				   EGL_PLATFORM_GBM_KHR,
-		// 				   (void *)b->gbm,
-		// 				   NULL,
-		// 				   gl_renderer->opaque_attribs,
-		// 				   format,
-		// 				   n_formats);
-
-        
-
-        // Err("GBMRenderer not yet implemtended".to_string())
-
-        Ok(Box::new(Self {
-            device: gbm,
-        }))
     }
 }
 
