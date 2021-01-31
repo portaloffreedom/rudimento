@@ -109,7 +109,7 @@ impl Backend for DRMBackend {
 impl DRMBackend {
     pub fn new(tty: Option<u32>, use_pixman: bool, use_egldevice: bool) -> backend::Result<Box<Self>> {
         let udev_context = libudev::Context::new().unwrap();
-        let device_devnode_path = try!(DRMBackend::find_primary_gpu(&udev_context, "seat0"));
+        let device_devnode_path = DRMBackend::find_primary_gpu(&udev_context, "seat0")?;
 
         use launcher::logind::LogindLauncher;
         let mut launcher = match LogindLauncher::new(tty, "".to_string(), false) {

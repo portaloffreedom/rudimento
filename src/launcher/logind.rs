@@ -76,13 +76,13 @@ pub struct LogindLauncher {
 impl LogindLauncher {
     pub fn new(tty: Option<u32>, seat_name: String, sync_drm: bool) -> Result<LogindLauncher, String> {
         //get session
-        let session_id = try!(login::get_session()).to_string_lossy().into_owned();
+        let session_id = login::get_session()?.to_string_lossy().into_owned();
 
         //get session seat
-        let seat_id = try!(login::session_get_seat(&session_id));
+        let seat_id = login::session_get_seat(&session_id)?;
 
         //session get vt and test
-        let vt = try!(login::session_get_vt(&session_id));
+        let vt = login::session_get_vt(&session_id)?;
         match tty {
             Some(tty) => {
                 if vt != tty {
@@ -112,12 +112,11 @@ impl LogindLauncher {
     }
 
     fn take_device(&self, device_path: &Path) -> Result<(RawFd, bool), String>{
-        let mut message = try!(dbus::Message::new_method_call(
+        let mut message = dbus::Message::new_method_call(
             "org.freedesktop.login1",
             &self.dbus_path,
             "org.freedesktop.login1.Session",
-            "TakeDevice")
-        );
+            "TakeDevice")?;
 
         let device_stat = my_stat(device_path).unwrap();
 
@@ -161,11 +160,11 @@ impl LogindLauncher {
         let device_major: u32 = major(device_stat.st_rdev);
         let device_minor: u32 = minor(device_stat.st_rdev);
 
-        let message = try!(dbus::Message::new_method_call(
+        let message = dbus::Message::new_method_call(
             "org.freedesktop.login1",
             &self.dbus_path,
             "org.freedesktop.login1.Session",
-            "ReleaseDevice"))
+            "ReleaseDevice")?
         .append2(device_major, device_minor);
 
         match self.dbus_conn.send(message) {
@@ -214,12 +213,12 @@ impl LogindLauncher {
 
     fn take_control(&self) -> Result<(),String> {
 
-        let message = try!(dbus::Message::new_method_call(
+        let message = dbus::Message::new_method_call(
             "org.freedesktop.login1",
             &self.dbus_path,
             "org.freedesktop.login1.Session",
-            "TakeControl")
-        ).append1(false); // force
+            "TakeControl")?
+            .append1(false); // force
 
         //dbus_connection_send_with_reply_and_block
         let reply = dbus_error_to_string_try!(
@@ -231,11 +230,11 @@ impl LogindLauncher {
     }
 
     fn release_control(&self) -> Result<(), String> {
-        let message = try!(dbus::Message::new_method_call(
+        let message = dbus::Message::new_method_call(
             "org.freedesktop.login1",
             &self.dbus_path,
             "org.freedesktop.login1.Session",
-            "ReleaseControl"));
+            "ReleaseControl")?;
 
         match self.dbus_conn.send(message) {
             Ok(_) => Ok(()),
@@ -244,11 +243,11 @@ impl LogindLauncher {
     }
 
     fn activate(&self) -> Result<(),String> {
-        let message = try!(dbus::Message::new_method_call(
+        let message = dbus::Message::new_method_call(
             "org.freedesktop.login1",
             &self.dbus_path,
             "org.freedesktop.login1.Session",
-            "Activate"));
+            "Activate")?;
 
         match self.dbus_conn.send(message) {
             Ok(_) => Ok(()),
@@ -259,9 +258,9 @@ impl LogindLauncher {
 
 impl Launcher for LogindLauncher {
     fn connect(&self) -> Result<(), String> {
-        try!(self.setup_dbus());
-        try!(self.take_control());
-        try!(self.activate());
+        self.setup_dbus()?;
+        self.take_control()?;
+        self.activate()?;
         Ok(())
     }
 
@@ -274,7 +273,7 @@ impl Launcher for LogindLauncher {
             None => self.device_path = Some(device_path.to_path_buf()),
         }
 
-        let (fd, _) = try!(self.take_device(device_path));
+        let (fd, _) = self.take_device(device_path)?;
 
         //F_GETFL
         use libc::{fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
@@ -316,12 +315,12 @@ impl Launcher for LogindLauncher {
     }
 
     fn activate_vt(&self) -> Result<(), String> {
-        let message = try!(dbus::Message::new_method_call(
+        let message = dbus::Message::new_method_call(
             "org.freedesktop.login1",
             "/org/freedesktop/login1/seat/self",
             "org.freedesktop.login1.Seat",
-            "SwitchTo"))
-        .append1(&self.vt);
+            "SwitchTo")?
+            .append1(&self.vt);
 
         match self.dbus_conn.send(message) {
             Ok(_) => Ok(()),
