@@ -1,6 +1,6 @@
 use renderer::Renderer;
 use backend::drm::DRMDevice;
-use std::os::unix::io::{AsRawFd, RawFd};
+// use std::os::unix::io::{AsRawFd, RawFd};
 use egl::types::*;
 use libc;
 use std::ffi::{CString, CStr};
@@ -15,7 +15,7 @@ pub struct GBMRenderer {
 impl GBMRenderer {
     pub fn new(drm_device: DRMDevice) -> Result<Box<Self>, String> {
 
-        let libname = CString::new("libglapi.so.0").expect("CString::new failed");;
+        let libname = CString::new("libglapi.so.0").expect("CString::new failed");
         let r: *mut libc::c_void = unsafe { 
             libc::dlopen(libname.as_ptr(), libc::RTLD_LAZY | libc::RTLD_GLOBAL)
         };
@@ -144,7 +144,7 @@ impl GBMRenderer {
         // write something to it (usually use import or egl rendering instead)
         let buffer = {
             let mut buffer = Vec::<u8>::new();
-            for i in 0..vdisplay {
+            for _i in 0..vdisplay {
                 for j in 0..hdisplay {
                     // XRGB8888
                     buffer.push(255);//if i % 2 == 0 { 0   } else { 0   }); // Blue
@@ -166,14 +166,14 @@ impl GBMRenderer {
         crtc::set(&self.gbm, *crtc_handle, fb_info_2.handle(), &[*con], (0, 0), Some(mode))
             .expect("display framebuffer to the crtc failed");
 
-        thread::sleep_ms(100);
+        thread::sleep(Duration::from_millis(100));
         
         // https://github.com/dvdhrm/docs/commit/87d3698967a148174cdaa97a068b23ca2387c798
         // https://docs.rs/drm/0.3.4/drm/control/crtc/fn.page_flip.html
         crtc::page_flip(&self.gbm, *crtc_handle, fb_info.handle(), &[crtc::PageFlipFlags::PageFlipEvent])
             .expect("Page Flip schedule failed");
 
-        thread::sleep_ms(100);
+        thread::sleep(Duration::from_millis(100));
 
         { // Test VSYNC
 
@@ -185,8 +185,8 @@ impl GBMRenderer {
                 thread::Builder::new().name(format!("vsync test builder {}", thread_id))
                     .spawn(move || {
                         let mut mother_buffer = Vec::<u8>::new();
-                        for i in 0..vdisplay {
-                            for j in 0..hdisplay {
+                        for _i in 0..vdisplay {
+                            for _j in 0..hdisplay {
                                 // XRGB8888
                                 mother_buffer.push(0); // Blue
                                 mother_buffer.push(255); // Green
@@ -196,7 +196,7 @@ impl GBMRenderer {
                         }
                         let mut buffers = Vec::new();
                         let partition = (128/threads_n) as usize;
-                        for c in ((partition*thread_id)..(partition*(thread_id+1))) {
+                        for c in (partition*thread_id)..(partition*(thread_id+1)) {
                             let mut i = 0;
                             let mut j = 0;
                             let mut quartet_counter = 0;
@@ -246,11 +246,11 @@ impl Renderer for GBMRenderer {
 
     fn create_image(
         &self,
-        context: Option<EGLContext>, 
+        context: Option<EGLContext>,
         target: EGLenum,
         buffer: EGLClientBuffer,
         attrib_list: &Vec<EGLint>
-    ) -> Result<Box<image::Image>, ::egl::EGLError>
+    ) -> Result<Box<dyn image::Image>, ::egl::EGLError>
     {
         panic!("not implemented yet");
     }

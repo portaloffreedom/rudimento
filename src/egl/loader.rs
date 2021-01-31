@@ -37,7 +37,7 @@ impl EglLoader {
         }
 
         Ok(EglLoader {
-            lib: lib,
+            lib,
         })
     }
 

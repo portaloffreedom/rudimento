@@ -1,7 +1,7 @@
-use renderer::Renderer;
-use egl::types::*;
+// use renderer::Renderer;
+// use egl::types::*;
 use wayland;
-use wayland_server;
+// use wayland_server;
 
 // Capabilites:
 //  WESTON_CAP_ROTATION_ANY
@@ -22,7 +22,7 @@ impl PixmanRenderer {
         -> Self
     {
         use wayland_server::protocol::wl_shm;
-        display.add_shm_format(wl_shm::Format::Rgb565);
+        display.add_shm_format(wl_shm::Format::Rgb565).unwrap();
 
 
         Self {

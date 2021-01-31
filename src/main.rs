@@ -22,7 +22,7 @@ mod gl {
 }
 
 use backend::drm;
-use backend::Backend;
+// use backend::Backend;
 
 fn main() {
     let use_pixman = false;
@@ -30,10 +30,10 @@ fn main() {
     let tty = None; //Some(2);
 
     {
-        let backend = match drm::DRMBackend::new(tty, use_pixman, use_egldevice) {
+        let _backend = match drm::DRMBackend::new(tty, use_pixman, use_egldevice) {
             Ok(b) => b,
             Err(error) => {
-                println!("{}", error.description());
+                println!("{}", error.to_string());
                 println!("exiting now");
                 std::process::exit(1);
             }

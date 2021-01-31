@@ -4,13 +4,13 @@ use egl::EGLError;
 use egl::ffi::types::*;
 use egl::device::{EGLDevice, get_egl_devices};
 use backend::drm::DRMDevice;
-use renderer::Renderer;
+// use renderer::Renderer;
 use std::path::Path;
-use libc;
-use renderer;
-use wayland::list::List as WLlist;
+// use libc;
+// use renderer;
+// use wayland::list::List as WLlist;
 use wayland::display::Display as WaylandDisplay;
-use wayland::signal::Signal as WaylandSignal;
+// use wayland::signal::Signal as WaylandSignal;
 
 #[derive(Debug)]
 pub struct EGLRenderer {

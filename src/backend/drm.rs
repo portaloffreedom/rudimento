@@ -15,8 +15,8 @@ use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
-use renderer::Renderer;
-use renderer::egl::EGLRenderer;
+// use renderer::Renderer;
+// use renderer::egl::EGLRenderer;
 use renderer::gbm::GBMRenderer;
 // use renderer::pixman::PixmanRenderer;
 
@@ -27,7 +27,7 @@ pub struct DRMBackend {
     //egl_device: EGLDeviceEXT,
     //udev_context: libudev::Context,
     drm_device: DRMDevice,
-    interface: Box<Launcher>,
+    interface: Box<dyn Launcher>,
     cursor_with: u64,
     cursor_height: u64,
     compositor: Compositor,
@@ -43,8 +43,8 @@ pub struct DRMDevice {
 impl DRMDevice {
     fn new(fd: RawFd, filename: PathBuf) -> DRMDevice {
         DRMDevice {
-            fd: fd,
-            filename: filename,
+            fd,
+            filename,
         }
     }
 

@@ -1,4 +1,4 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::time::Duration;
 use drm::DRMDevice;
 
@@ -17,9 +17,9 @@ impl RudimentoServer {
             .expect("Failed to create a server socket.");
 
         Self {
-            display: display,
-            event_loop: event_loop,
-            socket_name: socket_name,
+            display,
+            event_loop,
+            socket_name,
         }
     }
     

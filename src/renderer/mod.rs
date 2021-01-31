@@ -4,7 +4,7 @@ pub mod gbm;
 pub mod image;
 pub mod gl;
 
-use wayland;
+// use wayland;
 use egl::types::*;
 
 pub trait Renderer {
@@ -16,7 +16,7 @@ pub trait Renderer {
         target: EGLenum,
         buffer: EGLClientBuffer,
         attrib_list: &Vec<EGLint>
-    ) -> Result<Box<image::Image>, ::egl::EGLError>;
+    ) -> Result<Box<dyn image::Image>, ::egl::EGLError>;
 
     fn swap_buffers_with_damage(&self);
     fn create_platform_window(&self);

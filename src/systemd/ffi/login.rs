@@ -1,4 +1,4 @@
-use libc::{c_int, c_uint, c_char, pid_t, uid_t, uint64_t};
+use libc::{c_int, c_uint, c_char, pid_t, uid_t};
 
 #[allow(non_camel_case_types)]
 pub enum sd_login_monitor {}
@@ -72,6 +72,6 @@ extern "C" {
     pub fn sd_login_monitor_get_fd(m: *mut sd_login_monitor) -> c_int;
     pub fn sd_login_monitor_get_events(m: *mut sd_login_monitor) -> c_int;
     pub fn sd_login_monitor_get_timeout(m: *mut sd_login_monitor,
-                                        timeout_usec: *mut uint64_t)
+                                        timeout_usec: *mut u64)
                                         -> c_int;
 }

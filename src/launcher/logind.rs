@@ -4,7 +4,7 @@ use std::mem;
 use std::os::unix::io::RawFd;
 
 use dbus;
-use dbus::arg::Array;
+// use dbus::arg::Array;
 use libc;
 use libc::stat;
 use libc::c_int;
@@ -101,12 +101,12 @@ impl LogindLauncher {
         let dbus_conn = dbus::Connection::get_private(dbus::BusType::System).unwrap();
 
         Ok(LogindLauncher {
-            sync_drm: sync_drm,
-            seat_name: seat_name,
-            session_id: session_id,
-            vt: vt,
-            dbus_path: dbus_path,
-            dbus_conn: dbus_conn,
+            sync_drm,
+            seat_name,
+            session_id,
+            vt,
+            dbus_path,
+            dbus_conn,
             device_path: None,
         })
     }
@@ -221,7 +221,7 @@ impl LogindLauncher {
             .append1(false); // force
 
         //dbus_connection_send_with_reply_and_block
-        let reply = dbus_error_to_string_try!(
+        let _reply = dbus_error_to_string_try!(
             self.dbus_conn.send_with_reply_and_block(message, -1),
             "Error sending message \"TakeControl\": {}"
         );
@@ -305,7 +305,6 @@ impl Launcher for LogindLauncher {
 
     fn close(&mut self) {
         let mut path = None;
-        use std::mem;
         mem::swap(&mut path, &mut self.device_path);
 
         match self.release_device(&path.unwrap()).err() {
