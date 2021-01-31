@@ -5,9 +5,9 @@ authors = ["Matteo De Carlo <matteo.dek@gmail.com>"]
 build = "build.rs"
 
 [dependencies]
-gl = "0.11.0"
+gl = "0.14.0"
 khronos = "0.1.2"
-libc = "0.2.43"
+libc = "0.2.84"
 libudev = "0.2.0"
 dbus = "0.6.3"
 # drm-rs = "0.1.2" #other library
@@ -15,8 +15,8 @@ drm = "0.3.4" #missing feature in last stable
 # drm = { git = "https://github.com/Smithay/drm-rs.git", branch = "develop" }
 wayland-server = { version="0.21.4", features=["native_lib"]}
 mashup = "0.1.9"
-gbm = "0.4.0"
+gbm = "0.5.0"
 
 [build-dependencies]
-gl_generator = "0.10.0"
-pkg-config = "0.3.14"
+gl_generator = "0.14.0"
+pkg-config = "0.3.19"
